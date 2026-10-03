@@ -54,7 +54,8 @@ The e2e specs read verification and reset links from `e2e/backend.log`, so the b
 src/lib/          API client (single-flight token refresh, 429 handling), token store, DTO types, cursor-query hook
 src/components/ui Avatar, Button, Modal, Toast, Spinner, InfiniteList, empty/error states
 src/features/     auth (context, guards, login, register, verify-email, password reset), shell (layout, nav, trends panel),
-                  posts (post card, text with links, images), home (timeline); more are added per step
+                  posts (card, actions, menu and dialogs, post page), compose (composer, image upload, dialog), home (timeline);
+                  more are added per step
 e2e/              Playwright specs and helpers
 ```
 

@@ -26,6 +26,7 @@ export function makePost(overrides: Partial<PostResponse> = {}): PostResponse {
     conversationId: id,
     replyPolicy: 'EVERYONE',
     canReply: true,
+    bookmarkedByMe: false,
     ...overrides,
   }
 }

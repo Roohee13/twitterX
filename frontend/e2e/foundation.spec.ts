@@ -74,8 +74,12 @@ test.describe('app foundation', () => {
 
   test('the trends panel shows live data from the backend', async ({ page, request }) => {
     const user = await createUser(request)
+    // Trends rank by how many different people used a tag. The test database accumulates tags from every run, so use the tag
+    // from three accounts to be sure it makes the short list however much old test data there is.
     const tag = `e2etag${Date.now().toString(36)}`
-    await request.post('/api/posts', { data: { content: `hello #${tag}` }, headers: { Authorization: `Bearer ${user.accessToken}` } })
+    for (const author of [user, await createUser(request), await createUser(request)]) {
+      await request.post('/api/posts', { data: { content: `hello #${tag}` }, headers: { Authorization: `Bearer ${author.accessToken}` } })
+    }
 
     await signIn(page, user)
 

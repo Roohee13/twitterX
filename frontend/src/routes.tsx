@@ -7,12 +7,21 @@ import { ResetPasswordPage } from './features/auth/ResetPasswordPage'
 import { VerifyEmailPage } from './features/auth/VerifyEmailPage'
 import { AppShell } from './features/shell/AppShell'
 import { HomePage } from './features/home/HomePage'
+import { PostPage } from './features/posts/PostPage'
 import { NotFoundPage } from './features/shell/pages'
 
 export const router = createBrowserRouter([
   {
     element: <RequireAuth />,
-    children: [{ element: <AppShell />, children: [{ index: true, element: <HomePage /> }] }],
+    children: [
+      {
+        element: <AppShell />,
+        children: [
+          { index: true, element: <HomePage /> },
+          { path: '/post/:id', element: <PostPage /> },
+        ],
+      },
+    ],
   },
   {
     element: <GuestOnly />,

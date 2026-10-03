@@ -1,20 +1,31 @@
-import { render, screen, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router'
+import { screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { makePost, makeUser } from '../../test/fixtures'
+import { renderSignedIn, server } from '../../test/render'
+import { beforeAll, afterAll, afterEach, beforeEach } from 'vitest'
+import { configureApi } from '../../lib/api'
+import { tokens } from '../../lib/tokens'
+import { BASE } from '../../test/render'
 import type { PostResponse } from '../../lib/types'
 import { PostCard } from './PostCard'
 
-const show = (post: PostResponse) =>
-  render(
-    <MemoryRouter>
-      <PostCard post={post} />
-    </MemoryRouter>,
-  )
+beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+afterAll(() => server.close())
+beforeEach(() => {
+  configureApi({ baseUrl: BASE })
+  tokens.clear()
+})
+afterEach(() => server.resetHandlers())
+
+async function show(post: PostResponse) {
+  const view = renderSignedIn(<PostCard post={post} />)
+  await screen.findByRole('article')
+  return view
+}
 
 describe('PostCard', () => {
-  it('shows who posted, their handle, how long ago, and the text', () => {
-    show(makePost({ content: 'hello world', author: makeUser({ displayName: 'Ada Lovelace', username: 'ada' }) }))
+  it('shows who posted, their handle, how long ago, and the text', async () => {
+    await show(makePost({ content: 'hello world', author: makeUser({ displayName: 'Ada Lovelace', username: 'ada' }) }))
 
     expect(screen.getByRole('link', { name: 'Ada Lovelace' })).toHaveAttribute('href', '/u/ada')
     expect(screen.getByText('@ada')).toBeInTheDocument()
@@ -22,18 +33,23 @@ describe('PostCard', () => {
     expect(screen.getByText('hello world')).toBeInTheDocument()
   })
 
-  it('marks protected accounts with a lock', () => {
-    show(makePost({ author: makeUser({ protectedAccount: true }) }))
+  it('links the time to the post itself', async () => {
+    await show(makePost({ id: 321 }))
+    expect(screen.getByRole('link', { name: '5m' })).toHaveAttribute('href', '/post/321')
+  })
+
+  it('marks protected accounts with a lock', async () => {
+    await show(makePost({ author: makeUser({ protectedAccount: true }) }))
     expect(screen.getByLabelText('Protected account')).toBeInTheDocument()
   })
 
-  it('has no lock for public accounts', () => {
-    show(makePost())
+  it('has no lock for public accounts', async () => {
+    await show(makePost())
     expect(screen.queryByLabelText('Protected account')).not.toBeInTheDocument()
   })
 
-  it('links hashtags, resolved mentions and web addresses', () => {
-    show(makePost({ content: 'Hi @carol_k and @ghost_x #React https://example.com/docs.', mentions: [makeUser({ username: 'carol_k' })] }))
+  it('links hashtags, resolved mentions and web addresses', async () => {
+    await show(makePost({ content: 'Hi @carol_k and @ghost_x #React https://example.com/docs.', mentions: [makeUser({ username: 'carol_k' })] }))
 
     expect(screen.getByRole('link', { name: '#React' })).toHaveAttribute('href', '/hashtag/react')
     expect(screen.getByRole('link', { name: '@carol_k' })).toHaveAttribute('href', '/u/carol_k')
@@ -44,47 +60,46 @@ describe('PostCard', () => {
     expect(external.getAttribute('rel')).toContain('noopener')
   })
 
-  it('shows markup in a post as text instead of running it', () => {
-    const { container } = show(makePost({ content: '<img src=x onerror=alert(1)> <script>alert(2)</script>' }))
+  it('shows markup in a post as text instead of running it', async () => {
+    const { container } = await show(makePost({ content: '<img src=x onerror=alert(1)> <script>alert(2)</script>' }))
 
     expect(container.querySelector('img')).toBeNull()
     expect(container.querySelector('script')).toBeNull()
     expect(screen.getByText(/<img src=x onerror=alert\(1\)>/)).toBeInTheDocument()
   })
 
-  it('keeps line breaks and wraps very long words', () => {
-    show(makePost({ content: 'first line\nsecond line' }))
-    const paragraph = screen.getByText(/first line/)
-    expect(paragraph).toHaveClass('whitespace-pre-wrap', 'break-words')
+  it('keeps line breaks and wraps very long words', async () => {
+    await show(makePost({ content: 'first line\nsecond line' }))
+    expect(screen.getByText(/first line/)).toHaveClass('whitespace-pre-wrap', 'break-words')
   })
 
-  it('says who reposted it', () => {
-    show(makePost({ repostedBy: makeUser({ id: 22, username: 'dana', displayName: 'Dana' }) }))
+  it('says who reposted it', async () => {
+    await show(makePost({ repostedBy: makeUser({ id: 22, username: 'dana', displayName: 'Dana' }) }))
     const note = screen.getByText(/reposted/)
     expect(within(note).getByRole('link', { name: 'Dana' })).toHaveAttribute('href', '/u/dana')
   })
 
-  it('embeds a quoted post', () => {
-    show(makePost({ content: 'my take', quotedPost: makePost({ content: 'the original', author: makeUser({ displayName: 'Orin' }) }) }))
+  it('embeds a quoted post', async () => {
+    await show(makePost({ content: 'my take', quotedPost: makePost({ content: 'the original', author: makeUser({ displayName: 'Orin' }) }) }))
     const quoted = screen.getByRole('group', { name: 'Quoted post by Orin' })
     expect(within(quoted).getByText('the original')).toBeInTheDocument()
   })
 
-  it.each([1, 2, 3, 4])('shows %i attached image(s)', (count) => {
+  it.each([1, 2, 3, 4])('shows %i attached image(s)', async (count) => {
     const urls = Array.from({ length: count }, (_, i) => `https://media.test/${i}.png`)
-    show(makePost({ mediaUrls: urls }))
-    expect(screen.getAllByRole('img')).toHaveLength(count)
+    await show(makePost({ mediaUrls: urls }))
+    expect(screen.getAllByAltText(/attached to the post/)).toHaveLength(count)
   })
 
-  it('shows at most four images', () => {
-    show(makePost({ mediaUrls: Array.from({ length: 6 }, (_, i) => `https://media.test/${i}.png`) }))
-    expect(screen.getAllByRole('img')).toHaveLength(4)
+  it('shows at most four images', async () => {
+    await show(makePost({ mediaUrls: Array.from({ length: 6 }, (_, i) => `https://media.test/${i}.png`) }))
+    expect(screen.getAllByAltText(/attached to the post/)).toHaveLength(4)
   })
 
-  it('reports the counts accessibly, with correct singular and plural', () => {
-    show(makePost({ replyCount: 1, repostCount: 0, likeCount: 12 }))
-    expect(screen.getByLabelText('1 reply')).toBeInTheDocument()
-    expect(screen.getByLabelText('0 reposts')).toBeInTheDocument()
-    expect(screen.getByLabelText('12 likes')).toBeInTheDocument()
+  it('shows the counts next to the buttons, and nothing for zero', async () => {
+    await show(makePost({ replyCount: 1, repostCount: 0, likeCount: 12 }))
+    expect(within(screen.getByRole('button', { name: 'Reply' })).getByText('1')).toBeInTheDocument()
+    expect(within(screen.getByRole('button', { name: 'Like' })).getByText('12')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Repost' })).toHaveTextContent('')
   })
 })

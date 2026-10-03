@@ -62,15 +62,22 @@ export async function emailedLink(email: string, kind: 'verify-email' | 'reset-p
 /** Acts as a user through the API (setup for tests that are about what the UI shows, not about how things are created). */
 export function as(request: APIRequestContext, user: Pick<TestUser, 'accessToken'>) {
   const headers = { Authorization: `Bearer ${user.accessToken}` }
-  const run = async (method: 'post' | 'patch' | 'get', path: string, data?: unknown) => {
+  const run = async (method: 'post' | 'patch' | 'get' | 'delete', path: string, data?: unknown) => {
     const res = await request[method](path, { data, headers })
     if (!res.ok()) throw new Error(`${method.toUpperCase()} ${path} -> ${res.status()} ${await res.text()}`)
     return res.status() === 204 || res.status() === 202 ? null : res.json()
   }
   return {
+    get: (path: string) => run('get', path),
     post: (content: string, extra: Record<string, unknown> = {}) => run('post', '/api/posts', { content, ...extra }),
+    reply: (postId: number, content: string) => run('post', '/api/posts', { content, replyToId: postId }),
+    thread: (contents: string[], replyPolicy?: string) => run('post', '/api/posts/thread', { posts: contents.map((content) => ({ content })), replyPolicy }),
     follow: (username: string) => run('post', `/api/users/${username}/follow`),
+    block: (username: string) => run('post', `/api/users/${username}/block`),
+    like: (postId: number) => run('post', `/api/posts/${postId}/like`),
     repost: (postId: number) => run('post', `/api/posts/${postId}/repost`),
+    bookmark: (postId: number) => run('post', `/api/posts/${postId}/bookmark`),
+    setPolicy: (postId: number, replyPolicy: string) => run('patch', `/api/posts/${postId}/reply-policy`, { replyPolicy }),
     setProtected: () => run('patch', '/api/users/me', { protectedAccount: true }),
     approve: (username: string) => run('post', `/api/users/me/follow-requests/${username}/approve`),
   }

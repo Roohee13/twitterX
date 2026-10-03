@@ -5,7 +5,8 @@ import type { ReactElement } from 'react'
 import { StrictMode } from 'react'
 import { MemoryRouter, type InitialEntry } from 'react-router'
 import { ToastProvider } from '../components/ui/Toast'
-import { AuthProvider } from '../features/auth/AuthContext'
+import { http, HttpResponse } from 'msw'
+import { AuthProvider, useAuth } from '../features/auth/AuthContext'
 
 export const BASE = 'http://api.test'
 export const server = setupServer()
@@ -40,4 +41,20 @@ export function renderApp(ui: ReactElement, options: { route?: InitialEntry; str
     </QueryClientProvider>
   )
   return render(options.strict ? <StrictMode>{tree}</StrictMode> : tree)
+}
+
+function SignedInGate({ children }: { children: ReactElement }) {
+  const { status } = useAuth()
+  return status === 'authenticated' ? children : <p>restoring session</p>
+}
+
+/** Like renderApp, but with a signed-in user: stores a refresh token, answers the session restore and renders `ui` once it is done. */
+export function renderSignedIn(ui: ReactElement, options: { route?: InitialEntry; user?: Partial<typeof me> } = {}) {
+  localStorage.setItem('xclone.refreshToken', 'refresh-1')
+  const user = { ...me, ...options.user }
+  server.use(
+    http.post(`${BASE}/api/auth/refresh`, () => HttpResponse.json(authResponse(options.user))),
+    http.get(`${BASE}/api/users/me`, () => HttpResponse.json(user)),
+  )
+  return renderApp(<SignedInGate>{ui}</SignedInGate>, options)
 }

@@ -10,10 +10,12 @@ interface InfiniteListProps<T> {
   getKey: (item: T) => string | number
   emptyTitle: string
   emptyText?: string
+  /** Leaves some loaded items out of the list (e.g. ones already shown elsewhere on the page). */
+  filter?: (item: T) => boolean
 }
 
 /** Renders every loaded page and fetches the next one when the bottom sentinel scrolls into view. */
-export function InfiniteList<T>({ query, renderItem, getKey, emptyTitle, emptyText }: InfiniteListProps<T>) {
+export function InfiniteList<T>({ query, renderItem, getKey, emptyTitle, emptyText, filter }: InfiniteListProps<T>) {
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = query
   const sentinel = useRef<HTMLDivElement>(null)
 
@@ -30,7 +32,7 @@ export function InfiniteList<T>({ query, renderItem, getKey, emptyTitle, emptyTe
   if (query.isPending) return <Spinner />
   if (query.isError) return <ErrorState message={query.error.message} onRetry={() => void query.refetch()} />
 
-  const items = query.data.pages.flatMap((page) => page.items)
+  const items = query.data.pages.flatMap((page) => page.items).filter((item) => !filter || filter(item))
   if (items.length === 0) return <EmptyState title={emptyTitle}>{emptyText}</EmptyState>
 
   return (

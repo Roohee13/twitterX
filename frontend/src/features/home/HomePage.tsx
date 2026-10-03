@@ -4,12 +4,15 @@ import { InfiniteList } from '../../components/ui/InfiniteList'
 import { useCursorQuery } from '../../lib/queries'
 import type { PostResponse } from '../../lib/types'
 import { PageHeader } from '../shell/PageHeader'
+import { Composer } from '../compose/Composer'
+import { usePostsCreated } from '../compose/ComposeContext'
 import { PostCard, postKey } from '../posts/PostCard'
 
 export const TIMELINE_KEY = ['timeline']
 
 export function HomePage() {
   const queryClient = useQueryClient()
+  const created = usePostsCreated()
   // Fresh for 10 seconds; after that it is refetched whenever the tab regains focus.
   const timeline = useCursorQuery<PostResponse>(TIMELINE_KEY, '/api/timeline', { staleTime: 10_000 })
 
@@ -32,6 +35,9 @@ export function HomePage() {
           <RefreshCw size={18} className={timeline.isRefetching ? 'animate-spin' : ''} />
         </button>
       </PageHeader>
+      <div className="border-b border-zinc-800 px-4 pt-3">
+        <Composer onPosted={(posts) => created(posts)} />
+      </div>
       <InfiniteList
         query={timeline}
         getKey={postKey}

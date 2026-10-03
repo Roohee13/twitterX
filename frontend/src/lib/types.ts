@@ -73,6 +73,7 @@ export interface PostResponse {
   conversationId: number
   replyPolicy: ReplyPolicy
   canReply: boolean
+  bookmarkedByMe: boolean
 }
 
 export type NotificationType = 'FOLLOW' | 'LIKE' | 'REPLY' | 'MENTION' | 'REPOST' | 'FOLLOW_REQUEST'

@@ -7,7 +7,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { configureApi } from '../../lib/api'
 import { tokens } from '../../lib/tokens'
 import { makePost, makeUser } from '../../test/fixtures'
-import { BASE, renderApp, server } from '../../test/render'
+import { BASE, renderSignedIn, server } from '../../test/render'
 import { HomePage } from './HomePage'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
@@ -22,7 +22,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-const renderHome = () => renderApp(<Routes><Route path="/" element={<HomePage />} /></Routes>)
+const renderHome = () => renderSignedIn(<Routes><Route path="/" element={<HomePage />} /></Routes>)
 
 /** jsdom has no IntersectionObserver; this one lets a test decide when the bottom of the list "scrolls into view". */
 function stubObserver() {
@@ -41,7 +41,7 @@ describe('HomePage', () => {
 
     renderHome()
 
-    expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
+    expect(await screen.findByRole('status', { name: 'Loading' })).toBeInTheDocument()
     const posts = await screen.findAllByRole('article')
     expect(posts.map((p) => p.textContent)).toEqual([expect.stringContaining('newest'), expect.stringContaining('older')])
   })

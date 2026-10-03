@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
-import { Home, LogOut } from 'lucide-react'
+import { Feather, Home, LogOut } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { Link, NavLink, Outlet } from 'react-router'
+import { Link, NavLink, Outlet, useMatch } from 'react-router'
 import { Avatar } from '../../components/ui/Avatar'
 import { useAuth, useCurrentUser } from '../auth/AuthContext'
 import { VerificationBanner } from '../auth/VerificationBanner'
+import { ComposeProvider, useCompose } from '../compose/ComposeContext'
 import { api } from '../../lib/api'
 import type { TrendingHashtag } from '../../lib/types'
 
@@ -35,6 +36,39 @@ function NavItems({ vertical }: { vertical: boolean }) {
         </NavLink>
       ))}
     </>
+  )
+}
+
+function PostButton() {
+  const compose = useCompose()
+  return (
+    <button
+      type="button"
+      onClick={() => compose()}
+      aria-label="New post"
+      className="mt-3 flex items-center justify-center rounded-full bg-brand py-3 font-bold text-white hover:bg-brand-hover xl:w-full"
+    >
+      <Feather size={22} className="xl:hidden" />
+      <span className="hidden xl:inline">Post</span>
+    </button>
+  )
+}
+
+/** Phones have no room for the sidebar button. Pages with a composer of their own (home, a post) hide this so it never covers their Post button. */
+function FloatingPostButton() {
+  const compose = useCompose()
+  const onHome = useMatch('/')
+  const onPost = useMatch('/post/:id') // hooks must always run, so no `??` between them
+  if (onHome || onPost) return null
+  return (
+    <button
+      type="button"
+      onClick={() => compose()}
+      aria-label="New post"
+      className="fixed bottom-20 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-brand text-white shadow-lg hover:bg-brand-hover sm:hidden"
+    >
+      <Feather size={24} />
+    </button>
   )
 }
 
@@ -82,6 +116,14 @@ function TrendsPanel() {
 /** Left navigation, the page in the middle, side panels on the right; a bottom bar on phones. */
 export function AppShell() {
   return (
+    <ComposeProvider>
+      <Shell />
+    </ComposeProvider>
+  )
+}
+
+function Shell() {
+  return (
     <div className="mx-auto flex min-h-screen max-w-[1265px] justify-center">
       <header className="sticky top-0 hidden h-screen w-[72px] shrink-0 flex-col px-2 py-2 sm:flex xl:w-[275px]">
         <Link to="/" aria-label="XClone home" className="mb-2 w-fit rounded-full p-3 text-3xl font-black text-white hover:bg-zinc-900">
@@ -90,6 +132,7 @@ export function AppShell() {
         <nav aria-label="Main" className="flex flex-col gap-1">
           <NavItems vertical />
         </nav>
+        <PostButton />
         <UserCard />
       </header>
 
@@ -97,6 +140,7 @@ export function AppShell() {
         <VerificationBanner />
         <Outlet />
       </main>
+      <FloatingPostButton />
 
       <aside className="hidden w-[350px] shrink-0 flex-col gap-4 px-6 py-3 lg:flex">
         <TrendsPanel />
