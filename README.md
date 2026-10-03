@@ -21,6 +21,27 @@ The schema is managed by Flyway (`src/main/resources/db/migration`) and applied 
 Redis backs shared state (rate limits, caches, counters) so the API can run as several instances. Locally run
 `docker compose up -d redis`; in production set `REDIS_URL` (Upstash: the `rediss://` TLS URL). The app connects lazily.
 
+### Rate limiting
+
+Redis-backed fixed-window limits (`ratelimit/RateLimitRules.java`), answering `429` with `Retry-After`:
+
+| Scope | Limit |
+|---|---|
+| Login, per IP | 10 / min |
+| Register, per IP | 10 / hour |
+| Forgot / reset password, per IP | 5 / 10 per hour |
+| Other `/auth` calls, per IP | 60 / min |
+| Create post / thread, per user | 100 / hour, 20 / hour |
+| Send message (REST), per user | 60 / min |
+| Media upload URL, per user | 30 / min |
+| Follow, per user | 100 / hour |
+| Report user / post, per user | 20 / hour |
+| Any other write (`POST/PUT/PATCH/DELETE`), per user | 120 / min |
+
+Reads are not limited. If Redis is unreachable the limiter fails open and retries Redis after 30 s. Behind a load balancer set
+`FORWARD_HEADERS_STRATEGY=framework` so limits use the real client IP; leave it unset otherwise (the header is spoofable).
+`RATE_LIMIT_ENABLED=false` turns it off. Messages sent over the WebSocket are not covered yet.
+
 ### Neon
 
 Use Neon's pooled connection string (host contains `-pooler`) as `DB_URL` and its direct string as `MIGRATION_DB_URL`, both with `?sslmode=require`; see `.env.example`. A database that already has the tables from an older `ddl-auto` setup is adopted as V1 automatically.

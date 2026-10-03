@@ -8,6 +8,8 @@ spring:
       ddl-auto: create-drop
 
 app:
+  rate-limit:
+    enabled: false # integration tests create dozens of accounts from one IP
   jwt:
     secret: test-only-secret-test-only-secret-test-only-secret
   r2:

@@ -36,8 +36,13 @@ spring:
 
 server:
   port: ${PORT:8080}
+  # Set FORWARD_HEADERS_STRATEGY=framework behind a trusted reverse proxy/load balancer so rate limits see the real
+  # client IP (X-Forwarded-For). Leave as none otherwise: the header is client-controlled and spoofable.
+  forward-headers-strategy: ${FORWARD_HEADERS_STRATEGY:none}
 
 app:
+  rate-limit:
+    enabled: ${RATE_LIMIT_ENABLED:true}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173, http://localhost:8080}
   jwt:
