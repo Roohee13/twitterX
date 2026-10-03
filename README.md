@@ -16,6 +16,11 @@ createdb -U postgres xclone_test     # once, used by the tests
 
 The schema is managed by Flyway (`src/main/resources/db/migration`) and applied on startup; Hibernate only validates it. **Any entity change needs a new `V<n>__*.sql` migration.** Configuration comes from environment variables; see `.env.example`. The defaults connect to `localhost:5432/xclone` as `postgres`/`postgres`. **`JWT_SECRET` (at least 32 bytes) is required**, so export one before running, e.g. `export JWT_SECRET=$(openssl rand -hex 32)`.
 
+### Redis
+
+Redis backs shared state (rate limits, caches, counters) so the API can run as several instances. Locally run
+`docker compose up -d redis`; in production set `REDIS_URL` (Upstash: the `rediss://` TLS URL). The app connects lazily.
+
 ### Neon
 
 Use Neon's pooled connection string (host contains `-pooler`) as `DB_URL` and its direct string as `MIGRATION_DB_URL`, both with `?sslmode=require`; see `.env.example`. A database that already has the tables from an older `ddl-auto` setup is adopted as V1 automatically.

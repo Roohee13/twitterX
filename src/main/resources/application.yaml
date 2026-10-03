@@ -9,6 +9,13 @@ spring:
     hikari:
       maximum-pool-size: ${DB_POOL_SIZE:10}
       minimum-idle: ${DB_POOL_MIN_IDLE:2}
+  data:
+    redis:
+      # Upstash/managed Redis: rediss://default:<password>@<host>:6379 (TLS). Connects lazily, so the app still
+      # boots without Redis until a feature that uses it is called.
+      url: ${REDIS_URL:redis://localhost:6379}
+      timeout: ${REDIS_TIMEOUT:2s}
+      connect-timeout: ${REDIS_CONNECT_TIMEOUT:2s}
   flyway:
     # Migrations need session features PgBouncer's transaction mode lacks (advisory locks), so on Neon point
     # MIGRATION_DB_URL at the direct (non-pooler) URL. Defaults to the app's own datasource.
