@@ -1,0 +1,399 @@
+package com.project.Xclone_backend.post;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+import org.springframework.data.domain.Limit;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.project.Xclone_backend.bookmark.Bookmark;
+import com.project.Xclone_backend.bookmark.BookmarkRepository;
+import com.project.Xclone_backend.common.ApiException;
+import com.project.Xclone_backend.common.CursorPage;
+import com.project.Xclone_backend.follow.FollowRepository;
+import com.project.Xclone_backend.hashtag.Hashtag;
+import com.project.Xclone_backend.hashtag.HashtagService;
+import com.project.Xclone_backend.like.LikeRepository;
+import com.project.Xclone_backend.like.PostLike;
+import com.project.Xclone_backend.media.MediaService;
+import com.project.Xclone_backend.mention.MentionService;
+import com.project.Xclone_backend.notification.NotificationService;
+import com.project.Xclone_backend.notification.NotificationType;
+import com.project.Xclone_backend.post.PostDtos.CreatePostRequest;
+import com.project.Xclone_backend.post.PostDtos.CreateThreadRequest;
+import com.project.Xclone_backend.post.PostDtos.PostResponse;
+import com.project.Xclone_backend.post.PostDtos.UpdatePostRequest;
+import com.project.Xclone_backend.report.PostReportRepository;
+import com.project.Xclone_backend.report.ReportReason;
+import com.project.Xclone_backend.user.User;
+import com.project.Xclone_backend.user.UserDtos.UserSummary;
+import com.project.Xclone_backend.user.UserMapper;
+import com.project.Xclone_backend.user.UserService;
+
+import lombok.RequiredArgsConstructor;
+
+@Service
+@RequiredArgsConstructor
+public class PostService {
+
+    private static final int SEARCH_MIN_LENGTH = 2;
+    private static final int SEARCH_MAX_LENGTH = 100;
+
+    private final PostRepository postRepository;
+    private final LikeRepository likeRepository;
+    private final UserService userService;
+    private final PostMapper postMapper;
+    private final UserMapper userMapper;
+    private final MediaService mediaService;
+    private final HashtagService hashtagService;
+    private final PostReportRepository postReportRepository;
+    private final BookmarkRepository bookmarkRepository;
+    private final MentionService mentionService;
+    private final NotificationService notificationService;
+    private final FollowRepository followRepository;
+
+    @Transactional
+    public PostResponse create(Long authorId, CreatePostRequest req) {
+        String content = req.content() == null ? "" : req.content().strip();
+        List<String> mediaKeys = req.mediaKeys() == null ? List.of() : List.copyOf(new LinkedHashSet<>(req.mediaKeys()));
+        if (content.isEmpty() && mediaKeys.isEmpty()) {
+            throw ApiException.badRequest("A post needs text or at least one image");
+        }
+        mediaKeys.forEach(key -> mediaService.verifyOwnedUpload(authorId, key));
+
+        Post post = new Post();
+        User author = userService.requireById(authorId);
+        post.setAuthor(author);
+        post.setContent(content);
+        mediaKeys.forEach(post::addMedia);
+        syncHashtags(post);
+        syncMentions(post);
+
+        if (req.replyPolicy() != null && (req.replyToId() != null || req.quotedPostId() != null)) {
+            throw ApiException.badRequest("Only a top-level post can set who can reply");
+        }
+        if (req.replyPolicy() != null) {
+            post.setReplyPolicy(req.replyPolicy());
+        }
+        if (req.quotedPostId() != null) {
+            if (req.replyToId() != null) {
+                throw ApiException.badRequest("A post cannot be both a reply and a quote");
+            }
+            post.setQuoteOf(requireLive(req.quotedPostId()));
+        }
+        Post parent = null;
+        if (req.replyToId() != null) {
+            parent = requireLive(req.replyToId());
+            userService.requireNotBlocked(authorId, parent.getAuthor().getId());
+            Post root = parent.getRoot() != null ? parent.getRoot() : parent;
+            requireCanReply(root, authorId);
+            post.setParent(parent);
+            post.setRoot(root);
+            postRepository.addToReplyCount(parent.getId(), 1);
+        }
+        postRepository.save(post);
+        if (parent != null) {
+            notificationService.notify(parent.getAuthor(), author, NotificationType.REPLY, post);
+        }
+        for (User mentioned : post.getMentions()) {
+            if (parent == null || !mentioned.getId().equals(parent.getAuthor().getId())) {
+                notificationService.notify(mentioned, author, NotificationType.MENTION, post);
+            }
+        }
+        return postMapper.toResponse(post, authorId);
+    }
+
+    /** Creates the posts in order in one transaction: the first starts the thread, each later one replies to the previous. */
+    @Transactional
+    public List<PostResponse> createThread(Long authorId, CreateThreadRequest req) {
+        List<PostResponse> created = new ArrayList<>();
+        Long previousId = null;
+        for (CreatePostRequest item : req.posts()) {
+            if (item.replyToId() != null || item.quotedPostId() != null || item.replyPolicy() != null) {
+                throw ApiException.badRequest("Thread posts cannot set replyToId, quotedPostId or replyPolicy");
+            }
+            CreatePostRequest linked = new CreatePostRequest(item.content(), item.mediaKeys(), previousId, null,
+                    previousId == null ? req.replyPolicy() : null);
+            PostResponse response = create(authorId, linked);
+            created.add(response);
+            previousId = response.id();
+        }
+        return created;
+    }
+
+    /**
+     * The thread containing the post: the conversation's top-level post plus the author's own posts that chain from
+     * it through the author's own replies, oldest first. Replies by other people are not part of the thread.
+     */
+    @Transactional(readOnly = true)
+    public List<PostResponse> thread(Long postId, Long viewerId) {
+        Post post = requireLive(postId);
+        requireVisible(viewerId, post.getAuthor());
+        Post root = post.getRoot() != null ? post.getRoot() : post;
+        if (root.isDeleted()) {
+            throw ApiException.notFound("Post not found");
+        }
+        Long authorId = root.getAuthor().getId();
+        requireVisible(viewerId, root.getAuthor());
+        Set<Long> inThread = new HashSet<>(Set.of(root.getId()));
+        List<Post> chain = new ArrayList<>(List.of(root));
+        for (Post p : postRepository.findAuthorPostsInConversation(root.getId(), authorId)) {
+            if (inThread.contains(p.getParent().getId())) {
+                inThread.add(p.getId());
+                chain.add(p);
+            }
+        }
+        return postMapper.toResponses(chain, viewerId);
+    }
+
+    @Transactional
+    public PostResponse updateReplyPolicy(Long postId, Long userId, ReplyPolicy policy) {
+        Post post = requireLive(postId);
+        if (!post.getAuthor().getId().equals(userId)) {
+            throw ApiException.forbidden("You can only change who can reply to your own posts");
+        }
+        if (post.getParent() != null) {
+            throw ApiException.badRequest("Only a top-level post can set who can reply");
+        }
+        post.setReplyPolicy(policy);
+        return postMapper.toResponse(post, userId);
+    }
+
+    @Transactional(readOnly = true)
+    public PostResponse get(Long postId, Long viewerId) {
+        Post post = requireLive(postId);
+        requireVisible(viewerId, post.getAuthor());
+        return postMapper.toResponse(post, viewerId);
+    }
+
+    @Transactional
+    public PostResponse update(Long postId, Long userId, UpdatePostRequest req) {
+        Post post = requireLive(postId);
+        if (!post.getAuthor().getId().equals(userId)) {
+            throw ApiException.forbidden("You can only edit your own posts");
+        }
+        Set<Long> previouslyMentioned = post.getMentions().stream().map(User::getId).collect(Collectors.toSet());
+        post.setContent(req.content().strip());
+        syncHashtags(post);
+        syncMentions(post);
+        for (User mentioned : post.getMentions()) {
+            if (!previouslyMentioned.contains(mentioned.getId())) {
+                notificationService.notify(mentioned, post.getAuthor(), NotificationType.MENTION, post);
+            }
+        }
+        return postMapper.toResponse(post, userId);
+    }
+
+    @Transactional
+    public void delete(Long postId, Long userId) {
+        Post post = requireLive(postId);
+        if (!post.getAuthor().getId().equals(userId)) {
+            throw ApiException.forbidden("You can only delete your own posts");
+        }
+        post.setDeleted(true);
+        post.getMentions().clear();
+        notificationService.removeForPost(postId);
+        if (post.getParent() != null) {
+            postRepository.addToReplyCount(post.getParent().getId(), -1);
+        }
+    }
+
+    /** Only records the report; the reported post is not changed in any way. */
+    @Transactional
+    public void report(Long postId, Long reporterId, ReportReason reason) {
+        Post post = requireLive(postId);
+        if (post.getAuthor().getId().equals(reporterId)) {
+            throw ApiException.badRequest("You cannot report your own post");
+        }
+        if (postReportRepository.report(reporterId, postId, reason.name()) == 0) {
+            throw ApiException.conflict("You have already reported this post");
+        }
+    }
+
+    @Transactional
+    public void repost(Long postId, Long userId) {
+        Post post = requireLive(postId);
+        if (post.getAuthor().getId().equals(userId)) {
+            throw ApiException.badRequest("You cannot repost your own post");
+        }
+        if (postRepository.repost(userId, postId) > 0) {
+            postRepository.addToRepostCount(postId, 1);
+            notificationService.notify(post.getAuthor(), userService.requireById(userId), NotificationType.REPOST, post);
+        }
+    }
+
+    @Transactional
+    public void unrepost(Long postId, Long userId) {
+        requireLive(postId);
+        if (postRepository.unrepost(userId, postId) > 0) {
+            postRepository.addToRepostCount(postId, -1);
+            notificationService.removeRepost(userId, postId);
+        }
+    }
+
+    @Transactional
+    public void like(Long postId, Long userId) {
+        Post post = requireLive(postId);
+        userService.requireNotBlocked(userId, post.getAuthor().getId());
+        if (likeRepository.like(userId, postId) > 0) {
+            postRepository.addToLikeCount(postId, 1);
+            notificationService.notify(post.getAuthor(), userService.requireById(userId), NotificationType.LIKE, post);
+        }
+    }
+
+    @Transactional
+    public void unlike(Long postId, Long userId) {
+        requireLive(postId);
+        if (likeRepository.unlike(userId, postId) > 0) {
+            postRepository.addToLikeCount(postId, -1);
+            notificationService.removeLike(userId, postId);
+        }
+    }
+
+    @Transactional
+    public void bookmark(Long postId, Long userId) {
+        requireLive(postId);
+        if (bookmarkRepository.bookmark(userId, postId) == 0) {
+            throw ApiException.conflict("You have already bookmarked this post");
+        }
+    }
+
+    @Transactional
+    public void unbookmark(Long postId, Long userId) {
+        requireLive(postId);
+        bookmarkRepository.unbookmark(userId, postId);
+    }
+
+    /** Cursor here is the bookmark id, so paging follows "most recently bookmarked" order. */
+    @Transactional(readOnly = true)
+    public CursorPage<PostResponse> bookmarks(Long userId, Long cursor, Integer limit) {
+        int n = CursorPage.clampLimit(limit);
+        List<Bookmark> rows = bookmarkRepository.findUserBookmarks(userId, CursorPage.cursorOrMax(cursor), Limit.of(n + 1));
+        return CursorPage.of(rows, n, Bookmark::getId,
+                page -> postMapper.toResponses(page.stream().map(Bookmark::getPost).toList(), userId));
+    }
+
+    @Transactional(readOnly = true)
+    public CursorPage<PostResponse> replies(Long postId, Long viewerId, Long cursor, Integer limit) {
+        requireLive(postId);
+        int n = CursorPage.clampLimit(limit);
+        List<Post> rows = postRepository.findReplies(postId, viewerId, cursor == null ? 0L : cursor,
+                Limit.of(n + 1));
+        return CursorPage.of(rows, n, Post::getId, page -> postMapper.toResponses(page, viewerId));
+    }
+
+    @Transactional(readOnly = true)
+    public CursorPage<UserSummary> likers(Long postId, Long cursor, Integer limit) {
+        requireLive(postId);
+        int n = CursorPage.clampLimit(limit);
+        List<PostLike> rows = likeRepository.findLikers(postId, CursorPage.cursorOrMax(cursor), Limit.of(n + 1));
+        return CursorPage.of(rows, n, PostLike::getId,
+                page -> page.stream().map(l -> userMapper.toSummary(l.getUser())).toList());
+    }
+
+    @Transactional(readOnly = true)
+    public CursorPage<PostResponse> userPosts(String username, Long viewerId, Long cursor, Integer limit) {
+        User user = userService.requireByUsername(username);
+        requireVisible(viewerId, user);
+        int n = CursorPage.clampLimit(limit);
+        List<Post> rows = postRepository.findUserPosts(user.getId(), CursorPage.cursorOrMax(cursor), Limit.of(n + 1));
+        return CursorPage.of(rows, n, Post::getId, page -> postMapper.toResponses(page, viewerId));
+    }
+
+    @Transactional(readOnly = true)
+    public CursorPage<PostResponse> userReplies(String username, Long viewerId, Long cursor, Integer limit) {
+        User user = userService.requireByUsername(username);
+        requireVisible(viewerId, user);
+        int n = CursorPage.clampLimit(limit);
+        List<Post> rows = postRepository.findUserReplies(user.getId(), CursorPage.cursorOrMax(cursor), Limit.of(n + 1));
+        return CursorPage.of(rows, n, Post::getId, page -> postMapper.toResponses(page, viewerId));
+    }
+
+    /** Cursor here is the like id, so paging follows "most recently liked" order. */
+    @Transactional(readOnly = true)
+    public CursorPage<PostResponse> userLikes(String username, Long viewerId, Long cursor, Integer limit) {
+        User user = userService.requireByUsername(username);
+        requireVisible(viewerId, user);
+        int n = CursorPage.clampLimit(limit);
+        List<PostLike> rows = likeRepository.findUserLikes(user.getId(), viewerId, CursorPage.cursorOrMax(cursor),
+                Limit.of(n + 1));
+        return CursorPage.of(rows, n, PostLike::getId,
+                page -> postMapper.toResponses(page.stream().map(PostLike::getPost).toList(), viewerId));
+    }
+
+    @Transactional(readOnly = true)
+    public CursorPage<PostResponse> hashtagPosts(String name, Long viewerId, Long cursor, Integer limit) {
+        int n = CursorPage.clampLimit(limit);
+        List<Post> rows = postRepository.findByHashtag(HashtagService.normalize(name), CursorPage.cursorOrMax(cursor),
+                Limit.of(n + 1));
+        return CursorPage.of(rows, n, Post::getId, page -> postMapper.toResponses(page, viewerId));
+    }
+
+    @Transactional(readOnly = true)
+    public CursorPage<PostResponse> search(String q, Long viewerId, Long cursor, Integer limit) {
+        String term = q == null ? "" : q.strip().toLowerCase(Locale.ROOT);
+        if (term.length() < SEARCH_MIN_LENGTH) {
+            throw ApiException.badRequest("Search query must be at least " + SEARCH_MIN_LENGTH + " characters");
+        }
+        if (term.length() > SEARCH_MAX_LENGTH) {
+            throw ApiException.badRequest("Search query must be at most " + SEARCH_MAX_LENGTH + " characters");
+        }
+        String escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+        int n = CursorPage.clampLimit(limit);
+        List<Post> rows = postRepository.searchByContent("%" + escaped + "%", viewerId,
+                CursorPage.cursorOrMax(cursor), Limit.of(n + 1));
+        return CursorPage.of(rows, n, Post::getId, page -> postMapper.toResponses(page, viewerId));
+    }
+
+    @Transactional(readOnly = true)
+    public CursorPage<PostResponse> timeline(Long userId, Long cursor, Integer limit) {
+        int n = CursorPage.clampLimit(limit);
+        List<Post> rows = postRepository.findTimeline(userId, CursorPage.cursorOrMax(cursor), Limit.of(n + 1));
+        return CursorPage.of(rows, n, Post::getId, page -> postMapper.toResponses(page, userId));
+    }
+
+    /** The author of the conversation can always reply; everyone else must satisfy the root post's policy. */
+    private void requireCanReply(Post root, Long replierId) {
+        Long rootAuthorId = root.getAuthor().getId();
+        if (rootAuthorId.equals(replierId)) {
+            return;
+        }
+        boolean allowed = switch (root.getReplyPolicy()) {
+            case EVERYONE -> true;
+            case FOLLOWING -> followRepository.existsByFollowerIdAndFolloweeId(rootAuthorId, replierId);
+            case MENTIONED -> root.getMentions().stream().anyMatch(u -> u.getId().equals(replierId));
+        };
+        if (!allowed) {
+            throw ApiException.forbidden("The author limits who can reply to this conversation");
+        }
+    }
+
+    private void requireVisible(Long viewerId, User user) {
+        if (viewerId != null) {
+            userService.requireNotBlocked(viewerId, user.getId());
+        }
+    }
+  
+    /** Retain-then-add so Hibernate only writes the link rows that actually changed. */
+    private void syncHashtags(Post post) {
+        Set<Hashtag> tags = hashtagService.resolve(post.getContent());
+        post.getHashtags().retainAll(tags);
+        post.getHashtags().addAll(tags);
+    }
+
+    private void syncMentions(Post post) {
+        Set<User> users = mentionService.resolve(post.getContent());
+        post.getMentions().retainAll(users);
+        post.getMentions().addAll(users);
+    }
+
+    private Post requireLive(Long postId) {
+        return postRepository.findLive(postId).orElseThrow(() -> ApiException.notFound("Post not found"));
+    }
+}
