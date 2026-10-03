@@ -10,7 +10,7 @@ import org.springframework.data.jpa.repository.Query;
 
 public interface NotificationRepository extends JpaRepository<Notification, Long> {
 
-    /** Newest first; hides actors blocked either way, inactive actors and soft-deleted posts. */
+    /** Newest first; hides actors blocked either way or muted, inactive actors and soft-deleted posts. */
     @Query("""
             select n from Notification n join fetch n.actor left join fetch n.post p
             where n.recipient.id = :userId and n.id < :cursor
@@ -19,6 +19,7 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
               and not exists (select 1 from Block b
                    where (b.blocker.id = :userId and b.blocked.id = n.actor.id)
                       or (b.blocker.id = n.actor.id and b.blocked.id = :userId))
+              and not exists (select 1 from Mute m where m.muter.id = :userId and m.muted.id = n.actor.id)
             order by n.id desc
             """)
     List<Notification> findPage(Long userId, long cursor, Limit limit);
@@ -31,6 +32,7 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
               and not exists (select 1 from Block b
                    where (b.blocker.id = :userId and b.blocked.id = n.actor.id)
                       or (b.blocker.id = n.actor.id and b.blocked.id = :userId))
+              and not exists (select 1 from Mute m where m.muter.id = :userId and m.muted.id = n.actor.id)
             """)
     long countUnread(Long userId);
 

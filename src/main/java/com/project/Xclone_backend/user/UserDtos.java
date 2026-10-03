@@ -23,7 +23,7 @@ public final class UserDtos {
 
     public record ProfileResponse(Long id, String username, String displayName, String bio, String avatarUrl,
             String bannerUrl, Instant createdAt, long followerCount, long followingCount, boolean followedByMe,
-            boolean blockedByMe) {
+            boolean blockedByMe, boolean mutedByMe) {
     }
 
     /** Null fields are left unchanged. An empty string clears bio/avatar/banner. */

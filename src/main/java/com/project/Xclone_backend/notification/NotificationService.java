@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.project.Xclone_backend.block.BlockRepository;
 import com.project.Xclone_backend.common.ApiException;
 import com.project.Xclone_backend.common.CursorPage;
+import com.project.Xclone_backend.mute.MuteRepository;
 import com.project.Xclone_backend.notification.NotificationDtos.NotificationResponse;
 import com.project.Xclone_backend.notification.NotificationDtos.UnreadCountResponse;
 import com.project.Xclone_backend.post.Post;
@@ -25,6 +26,7 @@ public class NotificationService {
 
     private final NotificationRepository notificationRepository;
     private final BlockRepository blockRepository;
+    private final MuteRepository muteRepository;
     private final UserMapper userMapper;
     private final ApplicationEventPublisher events;
 
@@ -43,7 +45,10 @@ public class NotificationService {
         n.setType(type);
         n.setPost(post);
         notificationRepository.save(n);
-        events.publishEvent(new NotificationCreatedEvent(recipient.getId(), toResponse(n)));
+        // Muted actors are still stored (they show up again if the mute is lifted) but never pushed live.
+        if (!muteRepository.existsByMuterIdAndMutedId(recipient.getId(), actor.getId())) {
+            events.publishEvent(new NotificationCreatedEvent(recipient.getId(), toResponse(n)));
+        }
     }
 
     @Transactional

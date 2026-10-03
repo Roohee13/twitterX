@@ -213,6 +213,24 @@ class WebSocketMessagingTest {
     }
 
     @Test
+    void mutedActorIsNotPushedLiveButStillStored() throws Exception {
+        Account alice = newUser();
+        Account bob = newUser();
+        Account carol = newUser();
+        assertEquals(204, post(alice, "/api/users/" + bob.username() + "/mute").statusCode());
+        BlockingQueue<Map<String, Object>> aliceFeed =
+                connect(alice.token()).subscribe("/user/queue/notifications", userRegistry, alice.id());
+
+        assertEquals(204, post(bob, "/api/users/" + alice.username() + "/follow").statusCode());
+        assertNone(aliceFeed);
+        assertEquals(204, post(carol, "/api/users/" + alice.username() + "/follow").statusCode());
+
+        assertEquals(carol.username(), ((Map<?, ?>) next(aliceFeed).get("actor")).get("username"));
+        assertEquals(2, jdbc.queryForObject("select count(*) from notifications where recipient_id = ?",
+                Integer.class, alice.id()));
+    }
+
+    @Test
     void blockedActorDoesNotProduceAPush() throws Exception {
         Account alice = newUser();
         Account bob = newUser();

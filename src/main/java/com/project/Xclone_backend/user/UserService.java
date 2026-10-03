@@ -20,6 +20,8 @@ import com.project.Xclone_backend.follow.FollowRepository;
 import com.project.Xclone_backend.bookmark.BookmarkRepository;
 import com.project.Xclone_backend.like.LikeRepository;
 import com.project.Xclone_backend.media.MediaService;
+import com.project.Xclone_backend.mute.Mute;
+import com.project.Xclone_backend.mute.MuteRepository;
 import com.project.Xclone_backend.notification.NotificationService;
 import com.project.Xclone_backend.security.ActiveUserCache;
 import com.project.Xclone_backend.notification.NotificationType;
@@ -46,6 +48,7 @@ public class UserService {
     private final UserRepository userRepository;
     private final FollowRepository followRepository;
     private final BlockRepository blockRepository;
+    private final MuteRepository muteRepository;
     private final UserMapper userMapper;
     private final MediaService mediaService;
     private final UserReportRepository userReportRepository;
@@ -173,6 +176,7 @@ public class UserService {
         likeRepository.deleteAllByUser(userId);
         bookmarkRepository.deleteAllByUser(userId);
         followRepository.deleteAllInvolving(userId);
+        muteRepository.deleteAllInvolving(userId);
         notificationService.removeAllInvolving(userId);
         refreshTokenRepository.deleteAllForUser(userId);
         emailTokenRepository.deleteAllForUser(userId);
@@ -215,10 +219,12 @@ public class UserService {
                 && followRepository.existsByFollowerIdAndFolloweeId(viewerId, user.getId());
         boolean blockedByMe = viewerId != null
                 && blockRepository.existsByBlockerIdAndBlockedId(viewerId, user.getId());
+        boolean mutedByMe = viewerId != null
+                && muteRepository.existsByMuterIdAndMutedId(viewerId, user.getId());
         return userMapper.toProfile(user,
                 followRepository.countByFolloweeId(user.getId()),
                 followRepository.countByFollowerId(user.getId()),
-                followedByMe, blockedByMe);
+                followedByMe, blockedByMe, mutedByMe);
     }
 
     @Transactional
@@ -270,6 +276,30 @@ public class UserService {
     public void unblock(Long blockerId, String username) {
         User target = requireByUsername(username);
         blockRepository.unblock(blockerId, target.getId());
+    }
+
+    /** Silent and one-way: the muted user is not told, and the follow (if any) stays. */
+    @Transactional
+    public void mute(Long muterId, String username) {
+        User target = requireByUsername(username);
+        if (target.getId().equals(muterId)) {
+            throw ApiException.badRequest("You cannot mute yourself");
+        }
+        muteRepository.mute(muterId, target.getId());
+    }
+
+    @Transactional
+    public void unmute(Long muterId, String username) {
+        User target = requireByUsername(username);
+        muteRepository.unmute(muterId, target.getId());
+    }
+
+    @Transactional(readOnly = true)
+    public CursorPage<UserSummary> muted(Long userId, Long cursor, Integer limit) {
+        int n = CursorPage.clampLimit(limit);
+        List<Mute> rows = muteRepository.findMuted(userId, CursorPage.cursorOrMax(cursor), Limit.of(n + 1));
+        return CursorPage.of(rows, n, Mute::getId,
+                page -> page.stream().map(m -> userMapper.toSummary(m.getMuted())).toList());
     }
 
     @Transactional(readOnly = true)

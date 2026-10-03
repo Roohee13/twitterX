@@ -41,7 +41,7 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                         // The WebSocket handshake carries no Authorization header; STOMP CONNECT authenticates instead.
                         .requestMatchers("/ws/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/users/me", "/api/users/me/blocks").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/users/me", "/api/users/me/blocks", "/api/users/me/mutes").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/users/**", "/api/posts/**", "/api/hashtags/**", "/api/trending/**").permitAll()
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)

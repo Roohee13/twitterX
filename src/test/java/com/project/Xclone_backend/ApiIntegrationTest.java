@@ -1453,6 +1453,60 @@ class ApiIntegrationTest {
     }
 
     @Test
+    void muteHidesAUsersPostsAndNotificationsOneWayAndSilently() throws Exception {
+        Account alice = register();
+        Account bob = register();
+        Account carol = register();
+        mvc.perform(auth(post("/api/users/" + bob.username() + "/follow"), alice)).andExpect(status().isNoContent());
+        mvc.perform(auth(post("/api/users/" + carol.username() + "/follow"), alice)).andExpect(status().isNoContent());
+        long alicePost = createPost(alice, "{\"content\":\"alice speaking\"}");
+        long bobPost = createPost(bob, "{\"content\":\"bob speaking\"}");
+        long carolPost = createPost(carol, "{\"content\":\"carol speaking\"}");
+        mvc.perform(auth(post("/api/posts/" + alicePost + "/like"), bob)).andExpect(status().isNoContent());
+        mvc.perform(auth(post("/api/posts/" + alicePost + "/like"), carol)).andExpect(status().isNoContent());
+        // Carol reposts Bob's post, so it would reach Alice through Carol too.
+        mvc.perform(auth(post("/api/posts/" + bobPost + "/repost"), carol)).andExpect(status().isNoContent());
+        mvc.perform(auth(get("/api/notifications/unread-count"), alice)).andExpect(jsonPath("$.count").value(2));
+
+        mvc.perform(auth(post("/api/users/" + bob.username() + "/mute"), alice)).andExpect(status().isNoContent());
+        mvc.perform(auth(post("/api/users/" + bob.username() + "/mute"), alice)).andExpect(status().isNoContent()); // idempotent
+
+        // Bob's post, and Carol's repost of it, are gone from Alice's timeline; Carol's own post stays.
+        String timeline = mvc.perform(auth(get("/api/timeline"), alice)).andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        List<Integer> ids = JsonPath.read(timeline, "$.items[*].id");
+        org.assertj.core.api.Assertions.assertThat(ids).contains((int) carolPost, (int) alicePost)
+                .doesNotContain((int) bobPost);
+
+        // Bob's like notification disappears from the list and the unread count; Carol's stays.
+        mvc.perform(auth(get("/api/notifications"), alice))
+                .andExpect(jsonPath("$.items[?(@.actor.username=='" + bob.username() + "')]", hasSize(0)));
+        mvc.perform(auth(get("/api/notifications/unread-count"), alice)).andExpect(jsonPath("$.count").value(1));
+
+        // The mute is visible to Alice only, and nothing else changes for Bob.
+        mvc.perform(auth(get("/api/users/" + bob.username()), alice)).andExpect(jsonPath("$.mutedByMe").value(true));
+        mvc.perform(auth(get("/api/users/" + alice.username()), bob)).andExpect(jsonPath("$.mutedByMe").value(false));
+        mvc.perform(auth(get("/api/users/" + bob.username()), alice)).andExpect(jsonPath("$.followedByMe").value(true));
+        mvc.perform(auth(get("/api/posts/" + alicePost), bob)).andExpect(status().isOk());
+        mvc.perform(auth(get("/api/users/me/mutes"), alice))
+                .andExpect(jsonPath("$.items", hasSize(1)))
+                .andExpect(jsonPath("$.items[0].username").value(bob.username()));
+        mvc.perform(get("/api/users/me/mutes")).andExpect(status().isUnauthorized());
+
+        mvc.perform(auth(post("/api/users/" + alice.username() + "/mute"), alice)).andExpect(status().isBadRequest());
+        mvc.perform(auth(post("/api/users/nobody-here/mute"), alice)).andExpect(status().isNotFound());
+
+        // Unmuting brings everything back, including the stored notification.
+        mvc.perform(auth(delete("/api/users/" + bob.username() + "/mute"), alice)).andExpect(status().isNoContent());
+        mvc.perform(auth(delete("/api/users/" + bob.username() + "/mute"), alice)).andExpect(status().isNoContent());
+        mvc.perform(auth(get("/api/notifications/unread-count"), alice)).andExpect(jsonPath("$.count").value(2));
+        String after = mvc.perform(auth(get("/api/timeline"), alice)).andReturn().getResponse().getContentAsString();
+        List<Integer> afterIds = JsonPath.read(after, "$.items[*].id");
+        org.assertj.core.api.Assertions.assertThat(afterIds).contains((int) bobPost);
+        mvc.perform(auth(get("/api/users/me/mutes"), alice)).andExpect(jsonPath("$.items", hasSize(0)));
+    }
+
+    @Test
     void timelineReportsLikedAndRepostedFlagsForTheViewer() throws Exception {
         Account alice = register();
         Account bob = register();

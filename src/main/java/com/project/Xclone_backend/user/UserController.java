@@ -88,6 +88,12 @@ public class UserController {
         return userService.blocked(me.id(), cursor, limit);
     }
 
+    @GetMapping("/me/mutes")
+    public CursorPage<UserSummary> muted(@AuthenticationPrincipal AuthUser me,
+            @RequestParam(required = false) Long cursor, @RequestParam(required = false) Integer limit) {
+        return userService.muted(me.id(), cursor, limit);
+    }
+
     @GetMapping("/search")
     public List<UserSummary> search(@RequestParam(name = "q", required = false) String q) {
         return userService.search(q);
@@ -127,6 +133,18 @@ public class UserController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void unblock(@PathVariable String username, @AuthenticationPrincipal AuthUser me) {
         userService.unblock(me.id(), username);
+    }
+
+    @PostMapping("/{username}/mute")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void mute(@PathVariable String username, @AuthenticationPrincipal AuthUser me) {
+        userService.mute(me.id(), username);
+    }
+
+    @DeleteMapping("/{username}/mute")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void unmute(@PathVariable String username, @AuthenticationPrincipal AuthUser me) {
+        userService.unmute(me.id(), username);
     }
 
     @GetMapping("/{username}/followers")

@@ -84,7 +84,7 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     List<Post> searchByContent(String pattern, Long viewerId, long cursor, Limit limit);
 
     /**
-     * Home timeline: top-level posts and reposts by the user and everyone they follow, newest first. Each row is
+     * Home timeline: top-level posts and reposts by the user and everyone they follow, newest first, minus muted accounts (their posts, their reposts, and reposts of their posts). Each row is
      * {@code [Post, likedByUser (Boolean), repostedByUser (Boolean)]}, the two flags being about the post actually shown
      * (the original, for a repost row). Computing them here saves the two extra round trips the mapper would make.
      */
@@ -102,6 +102,8 @@ public interface PostRepository extends JpaRepository<Post, Long> {
                    or p.author.id in (select f.followee.id from Follow f where f.follower.id = :userId))
               and p.parent is null and p.deleted = false and p.id < :cursor
               and (o is null or o.deleted = false)
+              and not exists (select 1 from Mute m where m.muter.id = :userId
+                              and (m.muted.id = p.author.id or m.muted.id = o.author.id))
             order by p.id desc
             """)
     List<Object[]> findTimelineWithViewerFlags(Long userId, long cursor, Limit limit);
