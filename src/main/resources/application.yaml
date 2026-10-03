@@ -43,6 +43,10 @@ server:
   forward-headers-strategy: ${FORWARD_HEADERS_STRATEGY:none}
 
 app:
+  websocket:
+    # Fan WebSocket pushes out through Redis so they reach users connected to any instance. Falls back to local
+    # delivery when Redis is down. Set false to skip Redis entirely (single instance).
+    redis-relay: ${WS_REDIS_RELAY:true}
   rate-limit:
     enabled: ${RATE_LIMIT_ENABLED:true}
   cors:

@@ -1,6 +1,5 @@
 package com.project.Xclone_backend.websocket;
 
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
@@ -20,13 +19,12 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class NotificationDeliveryListener {
 
-    private final SimpMessagingTemplate messagingTemplate;
+    private final UserPushPublisher push;
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onNotificationCreated(NotificationCreatedEvent event) {
         try {
-            messagingTemplate.convertAndSendToUser(String.valueOf(event.recipientId()), "/queue/notifications",
-                    event.notification());
+            push.send(event.recipientId(), "/queue/notifications", event.notification());
         } catch (RuntimeException e) {
             log.warn("Could not push notification {} to user {}", event.notification().id(), event.recipientId(), e);
         }

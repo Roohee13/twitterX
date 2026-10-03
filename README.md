@@ -57,7 +57,13 @@ Connect to `ws://<host>/ws` and send the access token in the STOMP `CONNECT` fra
 
 Send messages to `/app/conversations/{id}/messages`. Pushes are best-effort: a client that is offline or reconnecting misses them, so
 on connect (and reconnect) fetch `GET /notifications/unread-count` and the latest page over REST, then increment from pushes.
-The broker is in-memory, so this works on a single instance only (multi-instance relay is a later step).
+
+**Running several instances.** Pushes (notifications and messages) are published to the Redis channel `ws:user-push` and every instance
+delivers them to the sessions it holds, so a user receives them on whichever instance they are connected to. This is on by default
+(`WS_REDIS_RELAY=false` turns it off for a single instance). Redis does not have to be up at boot: the app starts, delivers pushes to
+its own sessions only, and joins the relay as soon as Redis is reachable. Put the load balancer in front with no sticky sessions
+requirement for pushes; the WebSocket itself stays on the instance that accepted it. Messages sent *over* the socket are handled by
+the instance holding that socket and relayed to the recipient the same way.
 
 ### Neon
 

@@ -8,6 +8,8 @@ spring:
       ddl-auto: create-drop
 
 app:
+  websocket:
+    redis-relay: false # relay behavior has its own tests
   rate-limit:
     enabled: false # integration tests create dozens of accounts from one IP
   jwt:
