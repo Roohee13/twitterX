@@ -2,6 +2,7 @@ package com.project.Xclone_backend.post;
 
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -30,6 +31,10 @@ public class PostMapper {
     private final FollowRepository followRepository;
     private final R2Properties r2;
 
+    /** Which of the posts being shown the viewer has liked or reposted, when the caller already knows. */
+    public record ViewerFlags(Set<Long> liked, Set<Long> reposted) {
+    }
+
     public PostResponse toResponse(Post post, Long viewerId) {
         return toResponses(List.of(post), viewerId).get(0);
     }
@@ -52,6 +57,14 @@ public class PostMapper {
      * original and its author) must already be fetched. A repost row is rendered as its original.
      */
     public List<PostResponse> toResponses(List<Post> posts, Long viewerId) {
+        return toResponses(posts, viewerId, null);
+    }
+
+    /**
+     * Same, with the viewer's flags for the shown posts supplied by the caller (saves two queries). Quoted posts are
+     * not covered by {@code known}, so they are still looked up when the page has any.
+     */
+    public List<PostResponse> toResponses(List<Post> posts, Long viewerId, ViewerFlags known) {
         if (posts.isEmpty()) {
             return List.of();
         }
@@ -62,10 +75,21 @@ public class PostMapper {
         Map<Long, Post> quoted = quotedIds.isEmpty() ? Map.of()
                 : postRepository.findLiveByIds(quotedIds).stream().collect(Collectors.toMap(Post::getId, q -> q));
 
-        List<Long> targetIds = Stream.concat(targets.stream().map(Post::getId), quoted.keySet().stream())
-                .distinct().toList();
-        Set<Long> liked = viewerId == null ? Set.of() : likeRepository.findLikedPostIds(viewerId, targetIds);
-        Set<Long> reposted = viewerId == null ? Set.of() : postRepository.findRepostedPostIds(viewerId, targetIds);
+        Set<Long> liked = new HashSet<>();
+        Set<Long> reposted = new HashSet<>();
+        if (viewerId != null) {
+            if (known != null) {
+                liked.addAll(known.liked());
+                reposted.addAll(known.reposted());
+            }
+            List<Long> lookupIds = (known == null
+                    ? Stream.concat(targets.stream().map(Post::getId), quoted.keySet().stream())
+                    : quoted.keySet().stream()).distinct().toList();
+            if (!lookupIds.isEmpty()) {
+                liked.addAll(likeRepository.findLikedPostIds(viewerId, lookupIds));
+                reposted.addAll(postRepository.findRepostedPostIds(viewerId, lookupIds));
+            }
+        }
         ReplyAccess access = replyAccess(Stream.concat(targets.stream(), quoted.values().stream()).toList(), viewerId);
         return posts.stream().map(p -> {
             Post t = target(p);

@@ -1452,6 +1452,41 @@ class ApiIntegrationTest {
         return "{\"username\":\"" + username + "\"}";
     }
 
+    @Test
+    void timelineReportsLikedAndRepostedFlagsForTheViewer() throws Exception {
+        Account alice = register();
+        Account bob = register();
+        Account carol = register();
+        mvc.perform(auth(post("/api/users/" + alice.username() + "/follow"), bob)).andExpect(status().isNoContent());
+        mvc.perform(auth(post("/api/users/" + carol.username() + "/follow"), bob)).andExpect(status().isNoContent());
+
+        long liked = createPost(alice, "{\"content\":\"bob likes this\"}");
+        long reposted = createPost(alice, "{\"content\":\"bob reposts this\"}");
+        long plain = createPost(carol, "{\"content\":\"bob ignores this\"}");
+        long quote = createPost(carol, "{\"content\":\"quoting\",\"quotedPostId\":" + liked + "}");
+        mvc.perform(auth(post("/api/posts/" + liked + "/like"), bob)).andExpect(status().isNoContent());
+        mvc.perform(auth(post("/api/posts/" + reposted + "/repost"), bob)).andExpect(status().isNoContent());
+
+        String timeline = mvc.perform(auth(get("/api/timeline"), bob)).andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        // Every row for a post carries the viewer's flags about that post, including bob's own repost row.
+        assertFlags(timeline, liked, true, false);
+        assertFlags(timeline, reposted, false, true);
+        assertFlags(timeline, plain, false, false);
+        assertFlags(timeline, quote, false, false);
+        // The quoted post inside a quote post is looked up separately and must also be flagged.
+        List<Object> quotedLiked = JsonPath.read(timeline, "$.items[?(@.id==" + quote + ")].quotedPost.likedByMe");
+        assertEquals(List.of(true), quotedLiked);
+    }
+
+    private static void assertFlags(String timeline, long postId, boolean liked, boolean reposted) {
+        List<Object> likedFlags = JsonPath.read(timeline, "$.items[?(@.id==" + postId + ")].likedByMe");
+        List<Object> repostedFlags = JsonPath.read(timeline, "$.items[?(@.id==" + postId + ")].repostedByMe");
+        org.assertj.core.api.Assertions.assertThat(likedFlags).isNotEmpty().allMatch(f -> f.equals(liked));
+        org.assertj.core.api.Assertions.assertThat(repostedFlags).isNotEmpty().allMatch(f -> f.equals(reposted));
+    }
+
     private Account register() throws Exception {
         String username = "u" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
         String body = mvc.perform(json(post("/api/auth/register"), registerBody(username, username)))

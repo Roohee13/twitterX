@@ -83,16 +83,28 @@ public interface PostRepository extends JpaRepository<Post, Long> {
             """)
     List<Post> searchByContent(String pattern, Long viewerId, long cursor, Limit limit);
 
-    /** Home timeline: top-level posts and reposts by the user and everyone they follow, newest first. */
+    /**
+     * Home timeline: top-level posts and reposts by the user and everyone they follow, newest first. Each row is
+     * {@code [Post, likedByUser (Boolean), repostedByUser (Boolean)]}, the two flags being about the post actually shown
+     * (the original, for a repost row). Computing them here saves the two extra round trips the mapper would make.
+     */
     @Query("""
-            select p from Post p join fetch p.author left join fetch p.repostOf o left join fetch o.author
+            select p,
+                   case when exists (select 1 from PostLike l
+                                     where l.user.id = :userId and l.post.id = coalesce(o.id, p.id))
+                        then true else false end,
+                   case when exists (select 1 from Post r
+                                     where r.author.id = :userId and r.deleted = false
+                                       and r.repostOf.id = coalesce(o.id, p.id))
+                        then true else false end
+            from Post p join fetch p.author left join fetch p.repostOf o left join fetch o.author
             where (p.author.id = :userId
                    or p.author.id in (select f.followee.id from Follow f where f.follower.id = :userId))
               and p.parent is null and p.deleted = false and p.id < :cursor
               and (o is null or o.deleted = false)
             order by p.id desc
             """)
-    List<Post> findTimeline(Long userId, long cursor, Limit limit);
+    List<Object[]> findTimelineWithViewerFlags(Long userId, long cursor, Limit limit);
 
     @Modifying
     @Query("update Post p set p.likeCount = p.likeCount + :delta where p.id = :id")

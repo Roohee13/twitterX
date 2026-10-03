@@ -36,3 +36,17 @@ response is built in memory instead of three lookups. A plain post is now ~3 rou
 
 Create capacity per instance at +20 ms went from ~140/s to above 200/s. The timeline still issues ~7 statements per request and is
 the next thing to cut (batch the per-page lookups, cache hot timelines in Redis).
+
+## Timeline: viewer flags computed in the query
+
+The timeline's "liked / reposted by me" flags are now `EXISTS` subselects in the timeline query itself, so a page costs 3 statements
+(timeline, mentions, media) instead of 5. Quote posts still look up their quoted post's flags separately.
+
+| Setup (+20 ms DB round trip) | timeline @ 200/s | timeline @ 350/s |
+|---|---|---|
+| before (pool 20) | ~1.9 s avg, ~520 dropped | saturated |
+| after (pool 20) | ~150 ms avg (median 88 ms), 52 dropped | ~1.8 s avg, ~2,000 dropped |
+| after (pool 50) | n/a | ~310 ms avg (median 86 ms), 290 dropped |
+
+A bigger pool helps but not linearly here: this laptop also runs the app, Postgres, Toxiproxy and k6. Re-run against a real
+deployment (app in the same region as Neon) before choosing `DB_POOL_SIZE` and instance counts.

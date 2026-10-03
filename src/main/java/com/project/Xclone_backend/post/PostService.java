@@ -354,8 +354,24 @@ public class PostService {
     @Transactional(readOnly = true)
     public CursorPage<PostResponse> timeline(Long userId, Long cursor, Integer limit) {
         int n = CursorPage.clampLimit(limit);
-        List<Post> rows = postRepository.findTimeline(userId, CursorPage.cursorOrMax(cursor), Limit.of(n + 1));
-        return CursorPage.of(rows, n, Post::getId, page -> postMapper.toResponses(page, userId));
+        List<Object[]> rows = postRepository.findTimelineWithViewerFlags(userId, CursorPage.cursorOrMax(cursor),
+                Limit.of(n + 1));
+        List<Post> posts = new ArrayList<>(rows.size());
+        Set<Long> liked = new HashSet<>();
+        Set<Long> reposted = new HashSet<>();
+        for (Object[] row : rows) {
+            Post post = (Post) row[0];
+            Long shownId = post.getRepostOf() != null ? post.getRepostOf().getId() : post.getId();
+            if (Boolean.TRUE.equals(row[1])) {
+                liked.add(shownId);
+            }
+            if (Boolean.TRUE.equals(row[2])) {
+                reposted.add(shownId);
+            }
+            posts.add(post);
+        }
+        PostMapper.ViewerFlags flags = new PostMapper.ViewerFlags(liked, reposted);
+        return CursorPage.of(posts, n, Post::getId, page -> postMapper.toResponses(page, userId, flags));
     }
 
     /** The author of the conversation can always reply; everyone else must satisfy the root post's policy. */
