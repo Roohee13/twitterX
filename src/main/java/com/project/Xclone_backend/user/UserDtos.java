@@ -21,6 +21,10 @@ public final class UserDtos {
     public record UserSummary(Long id, String username, String displayName, String avatarUrl) {
     }
 
+    /** {@code mutualFollowCount}: how many people you follow follow this account (0 for popular-account fallbacks). */
+    public record SuggestionResponse(UserSummary user, long mutualFollowCount) {
+    }
+
     public record ProfileResponse(Long id, String username, String displayName, String bio, String avatarUrl,
             String bannerUrl, Instant createdAt, long followerCount, long followingCount, boolean followedByMe,
             boolean blockedByMe, boolean mutedByMe) {

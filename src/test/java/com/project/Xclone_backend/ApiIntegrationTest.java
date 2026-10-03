@@ -1507,6 +1507,46 @@ class ApiIntegrationTest {
     }
 
     @Test
+    void whoToFollowRanksFriendsOfFriendsAndExcludesWhoYouShouldNotSee() throws Exception {
+        Account alice = register();
+        Account bob = register();
+        Account carol = register();
+        Account dave = register();
+        Account erin = register();
+        Account frank = register();
+        Account gina = register();
+        for (Account followee : List.of(bob, carol)) {
+            mvc.perform(auth(post("/api/users/" + followee.username() + "/follow"), alice)).andExpect(status().isNoContent());
+        }
+        // Dave is followed by both of Alice's follows, Erin by one; Frank and Gina by one each but excluded below.
+        for (Account[] pair : new Account[][] {{bob, dave}, {carol, dave}, {bob, erin}, {bob, frank}, {bob, gina}}) {
+            mvc.perform(auth(post("/api/users/" + pair[1].username() + "/follow"), pair[0])).andExpect(status().isNoContent());
+        }
+        mvc.perform(auth(post("/api/users/" + frank.username() + "/block"), alice)).andExpect(status().isNoContent());
+        mvc.perform(auth(post("/api/users/" + gina.username() + "/mute"), alice)).andExpect(status().isNoContent());
+
+        String body = mvc.perform(auth(get("/api/users/suggestions?limit=20"), alice)).andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        List<String> names = JsonPath.read(body, "$[*].user.username");
+        org.assertj.core.api.Assertions.assertThat(names.subList(0, 2)).containsExactly(dave.username(), erin.username());
+        org.assertj.core.api.Assertions.assertThat(names)
+                .doesNotContain(alice.username(), bob.username(), carol.username(), frank.username(), gina.username());
+        assertEquals(List.of(2, 1), JsonPath.read(body, "$[0:2].mutualFollowCount"));
+
+        mvc.perform(auth(get("/api/users/suggestions?limit=1"), alice)).andExpect(jsonPath("$", hasSize(1)));
+        mvc.perform(get("/api/users/suggestions")).andExpect(status().isUnauthorized());
+
+        // A brand-new account follows nobody, so it gets popular accounts instead, never itself.
+        Account newcomer = register();
+        String cold = mvc.perform(auth(get("/api/users/suggestions"), newcomer)).andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        List<String> coldNames = JsonPath.read(cold, "$[*].user.username");
+        org.assertj.core.api.Assertions.assertThat(coldNames).isNotEmpty().doesNotContain(newcomer.username());
+        List<Integer> coldMutuals = JsonPath.read(cold, "$[*].mutualFollowCount");
+        org.assertj.core.api.Assertions.assertThat(coldMutuals).allMatch(m -> m == 0);
+    }
+
+    @Test
     void timelineReportsLikedAndRepostedFlagsForTheViewer() throws Exception {
         Account alice = register();
         Account bob = register();

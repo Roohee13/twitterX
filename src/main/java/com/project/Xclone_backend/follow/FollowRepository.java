@@ -60,4 +60,9 @@ public interface FollowRepository extends JpaRepository<Follow, Long> {
     /** Which of the given users follow {@code followeeId}. */
     @Query("select f.follower.id from Follow f where f.followee.id = :followeeId and f.follower.id in :ids")
     Set<Long> findFollowerIdsAmong(Long followeeId, Collection<Long> ids);
+
+    /** Ids of the accounts with the most followers, most followed first. */
+    @Query(value = "select followee_id from follows group by followee_id order by count(*) desc, followee_id desc limit :limit",
+            nativeQuery = true)
+    List<Long> findMostFollowedIds(int limit);
 }

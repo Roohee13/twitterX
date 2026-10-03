@@ -62,6 +62,9 @@ server:
   forward-headers-strategy: ${FORWARD_HEADERS_STRATEGY:none}
 
 app:
+  suggestions:
+    # How long the most-followed accounts (the fallback for users who follow few people) are reused before recomputing.
+    popular-cache-ttl: ${SUGGESTIONS_POPULAR_CACHE_TTL:10m}
   security:
     # How long an account is remembered as ACTIVE before the database is asked again. Deactivating evicts it on the
     # instance that handled the request; other instances notice within this time. 0 = check on every request.

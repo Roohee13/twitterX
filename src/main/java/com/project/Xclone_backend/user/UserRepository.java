@@ -30,4 +30,56 @@ public interface UserRepository extends JpaRepository<User, Long> {
             order by u.username
             """)
     List<User> search(String prefix, Limit limit);
+
+    /** One suggested account. {@code mutuals} is how many of the viewer's follows follow it (0 for popular fallbacks). */
+    interface SuggestionRow {
+        Long getId();
+
+        String getUsername();
+
+        String getDisplayName();
+
+        String getAvatarKey();
+
+        Long getMutuals();
+    }
+
+    /**
+     * Friends of friends: accounts followed by the viewer's {@code firstHop} most recent follows, ranked by how many of
+     * those follow them. Leaves out the viewer, accounts they already follow, block pairs, muted and inactive accounts.
+     */
+    @Query(value = """
+            with my_follows as (
+                select followee_id from follows where follower_id = :me order by id desc limit :firstHop
+            )
+            select u.id as "id", u.username as "username", u.display_name as "displayName",
+                   u.avatar_key as "avatarKey", count(*) as "mutuals"
+            from my_follows m
+            join follows f on f.follower_id = m.followee_id
+            join users u on u.id = f.followee_id
+            where u.id <> :me and u.status = 'ACTIVE'
+              and not exists (select 1 from follows x where x.follower_id = :me and x.followee_id = u.id)
+              and not exists (select 1 from blocks b
+                              where (b.blocker_id = :me and b.blocked_id = u.id)
+                                 or (b.blocker_id = u.id and b.blocked_id = :me))
+              and not exists (select 1 from mutes mu where mu.muter_id = :me and mu.muted_id = u.id)
+            group by u.id
+            order by count(*) desc, u.id desc
+            limit :limit
+            """, nativeQuery = true)
+    List<SuggestionRow> findFriendsOfFriends(long me, int firstHop, int limit);
+
+    /** The same exclusions, applied to a given set of candidates (the cached most-followed accounts). */
+    @Query(value = """
+            select u.id as "id", u.username as "username", u.display_name as "displayName",
+                   u.avatar_key as "avatarKey", 0 as "mutuals"
+            from users u
+            where u.id in (:candidateIds) and u.id <> :me and u.status = 'ACTIVE'
+              and not exists (select 1 from follows x where x.follower_id = :me and x.followee_id = u.id)
+              and not exists (select 1 from blocks b
+                              where (b.blocker_id = :me and b.blocked_id = u.id)
+                                 or (b.blocker_id = u.id and b.blocked_id = :me))
+              and not exists (select 1 from mutes mu where mu.muter_id = :me and mu.muted_id = u.id)
+            """, nativeQuery = true)
+    List<SuggestionRow> findAllowedAmong(long me, Collection<Long> candidateIds);
 }

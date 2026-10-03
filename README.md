@@ -136,6 +136,7 @@ All endpoints are under `/api`. Send `Authorization: Bearer <accessToken>` for a
 | POST / DELETE | `/users/{username}/block` | ✓ | idempotent; removes follows both ways. Blocked pairs can't follow, like or reply to each other or see each other's posts (403), and are hidden from each other's reply and follower lists |
 | POST / DELETE | `/users/{username}/mute` | ✓ | idempotent; silent and one-way: their posts (and reposts of them) leave your timeline, and notifications from them are hidden and not pushed live. Follows, replies, likes and DMs are unaffected, and they are not told. Unmuting restores everything |
 | GET | `/users/me/mutes` | ✓ | users you muted, paged |
+| GET | `/users/suggestions?limit=` | ✓ | who to follow (default 10, max 20): accounts followed by your most recent 200 follows, ranked by `mutualFollowCount`; excludes you, who you follow, blocks (either way), mutes and inactive accounts. When that yields fewer than `limit`, it is filled with the most-followed accounts (`mutualFollowCount` 0; ranking cached 10 min, `SUGGESTIONS_POPULAR_CACHE_TTL`) |
 | GET | `/users/{username}/followers`, `/following` | – | paged |
 | GET | `/users/{username}/posts`, `/replies`, `/likes` | optional | paged |
 | POST | `/posts` | ✓ | `{content?, mediaKeys?, replyToId?, quotedPostId?, replyPolicy?}`. `replyPolicy` (`EVERYONE` default, `FOLLOWING` = accounts the author follows, `MENTIONED` = accounts @mentioned in the post) is set on top-level posts only (400 on replies and quotes). Replying against it is 403; the author can always reply |

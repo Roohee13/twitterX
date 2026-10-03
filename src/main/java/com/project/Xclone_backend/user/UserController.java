@@ -23,6 +23,7 @@ import com.project.Xclone_backend.user.UserDtos.ChangePasswordRequest;
 import com.project.Xclone_backend.user.UserDtos.ChangeUsernameRequest;
 import com.project.Xclone_backend.user.UserDtos.DeleteAccountRequest;
 import com.project.Xclone_backend.user.UserDtos.ProfileResponse;
+import com.project.Xclone_backend.user.UserDtos.SuggestionResponse;
 import com.project.Xclone_backend.user.UserDtos.UpdateProfileRequest;
 import com.project.Xclone_backend.user.UserDtos.UserResponse;
 import com.project.Xclone_backend.user.UserDtos.UserSummary;
@@ -36,6 +37,7 @@ import lombok.RequiredArgsConstructor;
 public class UserController {
 
     private final UserService userService;
+    private final SuggestionService suggestionService;
 
     @GetMapping("/me")
     public UserResponse me(@AuthenticationPrincipal AuthUser me) {
@@ -92,6 +94,12 @@ public class UserController {
     public CursorPage<UserSummary> muted(@AuthenticationPrincipal AuthUser me,
             @RequestParam(required = false) Long cursor, @RequestParam(required = false) Integer limit) {
         return userService.muted(me.id(), cursor, limit);
+    }
+
+    @GetMapping("/suggestions")
+    public List<SuggestionResponse> suggestions(@AuthenticationPrincipal AuthUser me,
+            @RequestParam(required = false) Integer limit) {
+        return suggestionService.suggestions(me.id(), limit);
     }
 
     @GetMapping("/search")
