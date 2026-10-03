@@ -36,6 +36,25 @@ spring:
         jdbc:
           time_zone: UTC
 
+# Only the health endpoint is exposed, without details. Use /actuator/health/liveness for "is the process up" and
+# /actuator/health/readiness for "can it serve traffic" (database only). Redis is deliberately not part of health:
+# the app degrades gracefully without it, so a Redis outage must not take instances out of rotation.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,db
+  health:
+    redis:
+      enabled: false
+
 server:
   port: ${PORT:8080}
   # Set FORWARD_HEADERS_STRATEGY=framework behind a trusted reverse proxy/load balancer so rate limits see the real

@@ -86,6 +86,16 @@ The image is a two-stage build (JDK builds, JRE runs as a non-root user). `docke
 GitHub Actions (`.github/workflows/ci.yml`) runs `./mvnw verify` against Postgres and Redis service containers on every push to
 `main` and every pull request, then checks that the Docker image builds. Tests need no secrets.
 
+## Health checks
+
+`GET /actuator/health` (public, no details) is the only actuator endpoint exposed.
+- `/actuator/health/liveness`: the process is running. Use it to decide when to restart (the Docker `HEALTHCHECK` uses it).
+- `/actuator/health/readiness`: the database is reachable. Use it as the load balancer / orchestrator readiness probe. While the
+  database is unreachable the probe does not answer 200 (it can hang until the connection timeout, so configure a probe timeout).
+
+Redis is deliberately not part of health: rate limiting and WebSocket relay degrade gracefully without it, so a Redis outage should not
+take instances out of rotation.
+
 ## Cloudflare R2 setup
 
 1. Create a bucket and an R2 API token with Object Read & Write access.

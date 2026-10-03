@@ -14,5 +14,7 @@ WORKDIR /app
 COPY --from=build /app/target/*.jar app.jar
 USER app
 EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+  CMD curl -fs http://localhost:${PORT:-8080}/actuator/health/liveness || exit 1
 # Configuration comes from environment variables (see .env.example). JWT_SECRET is required.
 ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-jar", "app.jar"]
