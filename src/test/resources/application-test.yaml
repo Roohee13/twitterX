@@ -8,6 +8,8 @@ spring:
       ddl-auto: create-drop
 
 app:
+  security:
+    active-user-cache-ttl: 0s # tests change account status directly in the database
   websocket:
     redis-relay: false # relay behavior has its own tests
   rate-limit:

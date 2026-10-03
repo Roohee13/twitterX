@@ -11,10 +11,9 @@ import org.springframework.messaging.support.ChannelInterceptor;
 import org.springframework.messaging.support.MessageHeaderAccessor;
 import org.springframework.stereotype.Component;
 
+import com.project.Xclone_backend.security.ActiveUserCache;
 import com.project.Xclone_backend.security.AuthUser;
 import com.project.Xclone_backend.security.JwtService;
-import com.project.Xclone_backend.user.AccountStatus;
-import com.project.Xclone_backend.user.UserRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -31,7 +30,7 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
     private static final String USER_QUEUE_PREFIX = "/user/queue/";
 
     private final JwtService jwtService;
-    private final UserRepository userRepository;
+    private final ActiveUserCache activeUsers;
 
     @Override
     public Message<?> preSend(Message<?> message, MessageChannel channel) {
@@ -59,7 +58,7 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
     private StompPrincipal authenticate(String header) {
         Optional<AuthUser> user = header != null && header.startsWith(BEARER)
                 ? jwtService.parse(header.substring(BEARER.length())) : Optional.empty();
-        return user.filter(u -> userRepository.existsByIdAndStatus(u.id(), AccountStatus.ACTIVE))
+        return user.filter(u -> activeUsers.isActive(u.id()))
                 .map(StompPrincipal::new)
                 .orElseThrow(() -> new MessageDeliveryException("Unauthorized"));
     }
@@ -67,7 +66,7 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
     /** Re-checked on every frame so a deactivated account loses access without waiting for the token to expire. */
     private void requireActiveUser(StompHeaderAccessor accessor) {
         if (!(accessor.getUser() instanceof StompPrincipal principal)
-                || !userRepository.existsByIdAndStatus(principal.user().id(), AccountStatus.ACTIVE)) {
+                || !activeUsers.isActive(principal.user().id())) {
             throw new MessageDeliveryException("Unauthorized");
         }
     }

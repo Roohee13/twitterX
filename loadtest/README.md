@@ -23,3 +23,16 @@ A plain post creation is ~7 sequential round trips (JWT filter user check, autho
 response, commit). Per-instance throughput is therefore `pool size / (round trips x latency)`: the connection is held for the whole
 request. Keep the app in the same region as Neon, cut round trips per request, and scale instances horizontally.
 Contention on one hot post's `like_count` was not visible up to 600 likes/s locally; re-test against Neon.
+
+## After cutting round trips (same setup)
+
+Changes: the JWT filter's "is the account active" check is cached for 10 s (`ACTIVE_USER_CACHE_TTL`), and a newly created post's
+response is built in memory instead of three lookups. A plain post is now ~3 round trips (author lookup, insert, commit).
+
+| DB round trip | create post | create @ 200/s | timeline @ 200/s |
+|---|---|---|---|
+| +5 ms | ~29 ms avg (was ~47) | fine | ~40 ms avg |
+| +20 ms | ~97 ms avg at 60/s (was ~165) | ~109 ms avg, 3 dropped (was ~2.8 s, ~1,000 dropped) | still saturated: ~1.9 s avg (was ~2.5 s) |
+
+Create capacity per instance at +20 ms went from ~140/s to above 200/s. The timeline still issues ~7 statements per request and is
+the next thing to cut (batch the per-page lookups, cache hot timelines in Redis).

@@ -106,7 +106,7 @@ public class PostService {
                 notificationService.notify(mentioned, author, NotificationType.MENTION, post);
             }
         }
-        return postMapper.toResponse(post, authorId);
+        return postMapper.toCreatedResponse(post);
     }
 
     /** Creates the posts in order in one transaction: the first starts the thread, each later one replies to the previous. */

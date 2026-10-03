@@ -43,6 +43,10 @@ server:
   forward-headers-strategy: ${FORWARD_HEADERS_STRATEGY:none}
 
 app:
+  security:
+    # How long an account is remembered as ACTIVE before the database is asked again. Deactivating evicts it on the
+    # instance that handled the request; other instances notice within this time. 0 = check on every request.
+    active-user-cache-ttl: ${ACTIVE_USER_CACHE_TTL:10s}
   websocket:
     # Fan WebSocket pushes out through Redis so they reach users connected to any instance. Falls back to local
     # delivery when Redis is down. Set false to skip Redis entirely (single instance).

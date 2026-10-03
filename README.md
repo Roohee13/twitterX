@@ -67,7 +67,9 @@ the instance holding that socket and relayed to the recipient the same way.
 
 ### Neon
 
-Use Neon's pooled connection string (host contains `-pooler`) as `DB_URL` and its direct string as `MIGRATION_DB_URL`, both with `?sslmode=require`; see `.env.example`. Use an **empty** database: V1 creates the whole schema. A database that already has the complete schema from the older `ddl-auto` setup (e.g. a local `xclone`) must be adopted once with `FLYWAY_BASELINE_ON_MIGRATE=true`; a non-empty database without it fails at startup rather than being half-adopted.
+Use Neon's pooled connection string (host contains `-pooler`) as `DB_URL` and its direct string as `MIGRATION_DB_URL`, both with `?sslmode=require`; see `.env.example`. Use an **empty** database: V1 creates the whole schema. Keep the app in the **same cloud region** as the Neon project: every query is a network round trip that holds a pooled connection, so per-instance throughput is about `DB_POOL_SIZE / (queries per request x latency)` (see `loadtest/README.md`). Neon's pooler accepts many client connections, so `DB_POOL_SIZE` can be raised (30-50) when you run few instances.
+
+A database that already has the complete schema from the older `ddl-auto` setup (e.g. a local `xclone`) must be adopted once with `FLYWAY_BASELINE_ON_MIGRATE=true`; a non-empty database without it fails at startup rather than being half-adopted.
 
 R2 is optional for local development. Without `R2_ACCOUNT_ID`/`R2_ACCESS_KEY`/`R2_SECRET_KEY`, everything works except media endpoints, which return `503`.
 

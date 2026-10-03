@@ -21,6 +21,7 @@ import com.project.Xclone_backend.bookmark.BookmarkRepository;
 import com.project.Xclone_backend.like.LikeRepository;
 import com.project.Xclone_backend.media.MediaService;
 import com.project.Xclone_backend.notification.NotificationService;
+import com.project.Xclone_backend.security.ActiveUserCache;
 import com.project.Xclone_backend.notification.NotificationType;
 import com.project.Xclone_backend.post.PostRepository;
 import com.project.Xclone_backend.report.ReportReason;
@@ -56,6 +57,7 @@ public class UserService {
     private final NotificationService notificationService;
     private final EmailTokenService emailTokenService;
     private final EmailTokenRepository emailTokenRepository;
+    private final ActiveUserCache activeUserCache;
 
     public User requireByUsername(String username) {
         return userRepository.findByUsername(username.toLowerCase(Locale.ROOT))
@@ -153,6 +155,7 @@ public class UserService {
         User user = requireById(userId);
         user.setStatus(AccountStatus.DEACTIVATED);
         refreshTokenRepository.revokeAllForUser(userId);
+        activeUserCache.evictAfterCommit(userId);
     }
 
     /**
@@ -188,6 +191,7 @@ public class UserService {
         user.setBannerKey(null);
         user.setEmailVerified(false);
         user.setStatus(AccountStatus.DELETED);
+        activeUserCache.evictAfterCommit(userId);
     }
 
     private void requirePassword(User user, String password) {

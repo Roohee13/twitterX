@@ -35,6 +35,19 @@ public class PostMapper {
     }
 
     /**
+     * Response for a post its author has just created, built from what is already in memory: nothing is liked or
+     * reposted yet, and the author just passed the reply check, so no queries are needed. Quote posts take the
+     * regular path because they embed another post whose viewer flags must be looked up.
+     */
+    public PostResponse toCreatedResponse(Post post) {
+        if (post.getQuoteOf() != null) {
+            return toResponse(post, post.getAuthor().getId());
+        }
+        Post root = post.getRoot() != null ? post.getRoot() : post;
+        return map(post, false, false, null, null, root.getReplyPolicy(), true);
+    }
+
+    /**
      * Maps a page of posts, resolving "liked/reposted by me" with one query each. Authors (and, for repost rows, the
      * original and its author) must already be fetched. A repost row is rendered as its original.
      */
@@ -118,15 +131,21 @@ public class PostMapper {
 
     private PostResponse map(Post p, boolean likedByMe, boolean repostedByMe, UserSummary repostedBy,
             PostResponse quotedPost, ReplyAccess access) {
+        Post root = access.rootOf(p);
+        return map(p, likedByMe, repostedByMe, repostedBy, quotedPost,
+                root == null ? ReplyPolicy.EVERYONE : root.getReplyPolicy(), access.canReply(root));
+    }
+
+    private PostResponse map(Post p, boolean likedByMe, boolean repostedByMe, UserSummary repostedBy,
+            PostResponse quotedPost, ReplyPolicy replyPolicy, boolean canReply) {
         List<UserSummary> mentions = p.getMentions().stream()
                 .sorted(Comparator.comparing(User::getUsername)).map(userMapper::toSummary).toList();
         List<String> mediaUrls = p.getMedia().stream().map(m -> r2.publicUrl(m.getR2Key())).toList();
         Long replyToId = p.getParent() == null ? null : p.getParent().getId();
-        Post root = access.rootOf(p);
         return new PostResponse(p.getId(), userMapper.toSummary(p.getAuthor()), p.getContent(), mediaUrls,
                 replyToId, p.getLikeCount(), p.getReplyCount(), likedByMe, p.getCreatedAt(),
                 p.getRepostCount(), repostedByMe, repostedBy, quotedPost, mentions,
                 p.getRoot() == null ? p.getId() : p.getRoot().getId(),
-                root == null ? ReplyPolicy.EVERYONE : root.getReplyPolicy(), access.canReply(root));
+                replyPolicy, canReply);
     }
 }
