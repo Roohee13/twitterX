@@ -21,8 +21,17 @@ npm run dev
 Open http://localhost:5173. Point the proxy elsewhere with `VITE_BACKEND_URL`. For a production build set `VITE_API_BASE` to the API origin
 (the backend's `CORS_ALLOWED_ORIGINS` must then include the site's origin).
 
-Emails (verification, password reset) are only logged by the backend when no SMTP server is configured: look for the line
-`Email not sent (no SMTP configured)` in the backend console and open the link in it.
+Until the composer exists, fill the app with demo data (users `demo_ava`, `demo_ben`, `demo_cleo`, `demo_dan`, password `password123`;
+safe to run again) and sign in as `demo_ava` to see a timeline with hashtags, mentions, a quote, a repost and a protected account:
+
+```bash
+API_BASE=http://localhost:8080 npm run seed
+```
+
+Emails (verification, password reset): the easy way is the local Mailpit inbox. Run `docker compose up -d mailpit` from the repository root,
+start the backend with `SPRING_MAIL_HOST=localhost` and `SPRING_MAIL_PORT=1025`, and read the emails at http://localhost:8025 (see the
+Email section of the main README). Without any mail setting the backend only logs the link: look for `Email not sent (no SMTP configured)`
+in its console.
 
 ## Checks
 
@@ -32,7 +41,7 @@ npm test              # Vitest + Testing Library + MSW (API client, auth screens
 npm run build         # type-check + production bundle
 npm run e2e:install   # once: downloads Chromium for Playwright
 
-# Browser tests run against their own backend (:8090) and Vite server (:5174), so they never touch what you run on 8080/5173:
+# Browser tests run against their own backend (:8090) and Vite server (:5174, reached as 127.0.0.1), so they never touch what you run on 8080/5173:
 ./scripts/e2e-backend.sh   # terminal 1: scratch database + Redis + backend; its log is also written to e2e/backend.log
 npm run e2e                # terminal 2: starts Vite itself; screenshots land in e2e/screenshots/ (git-ignored)
 ```
@@ -44,7 +53,8 @@ The e2e specs read verification and reset links from `e2e/backend.log`, so the b
 ```
 src/lib/          API client (single-flight token refresh, 429 handling), token store, DTO types, cursor-query hook
 src/components/ui Avatar, Button, Modal, Toast, Spinner, InfiniteList, empty/error states
-src/features/     auth (context, guards, login, register, verify-email, password reset), shell (layout, nav, trends panel); more are added per step
+src/features/     auth (context, guards, login, register, verify-email, password reset), shell (layout, nav, trends panel),
+                  posts (post card, text with links, images), home (timeline); more are added per step
 e2e/              Playwright specs and helpers
 ```
 

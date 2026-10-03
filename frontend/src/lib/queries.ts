@@ -5,6 +5,8 @@ import type { CursorPage } from './types'
 interface CursorQueryOptions {
   enabled?: boolean
   limit?: number
+  /** How long loaded pages count as fresh; after that they are refetched when the window regains focus. */
+  staleTime?: number
   /** Extra query-string parameters, e.g. `{ q: 'term' }`. */
   params?: Record<string, string>
 }
@@ -18,5 +20,6 @@ export function useCursorQuery<T>(key: QueryKey, path: string, options: CursorQu
     initialPageParam: null as number | null,
     getNextPageParam: (last) => last.nextCursor,
     enabled: options.enabled,
+    staleTime: options.staleTime,
   })
 }

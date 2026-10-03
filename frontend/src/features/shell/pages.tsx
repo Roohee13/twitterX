@@ -1,15 +1,4 @@
 import { Link } from 'react-router'
-import { EmptyState } from '../../components/ui/States'
-import { PageHeader } from './PageHeader'
-
-export function HomePage() {
-  return (
-    <>
-      <PageHeader title="Home" />
-      <EmptyState title="Your timeline is on its way">The home timeline is built in the next step.</EmptyState>
-    </>
-  )
-}
 
 export function NotFoundPage() {
   return (

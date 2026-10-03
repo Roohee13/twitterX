@@ -10,7 +10,8 @@ export default defineConfig({
   retries: 0,
   reporter: [['list']],
   use: {
-    baseURL: 'http://localhost:5174',
+    // 127.0.0.1, not localhost: Playwright's API client waits ~4 s per request on "localhost" here (the dev server listens on IPv4 only).
+    baseURL: 'http://127.0.0.1:5174',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
@@ -18,7 +19,7 @@ export default defineConfig({
   webServer: {
     command: 'npm run dev',
     env: { VITE_PORT: '5174', VITE_BACKEND_URL: 'http://localhost:8090' },
-    url: 'http://localhost:5174',
+    url: 'http://127.0.0.1:5174',
     reuseExistingServer: true,
     timeout: 60_000,
   },

@@ -58,3 +58,20 @@ export async function emailedLink(email: string, kind: 'verify-email' | 'reset-p
   }
   throw new Error(`No ${kind} email for ${email} found in ${logPath}. Was the backend started with scripts/e2e-backend.sh?`)
 }
+
+/** Acts as a user through the API (setup for tests that are about what the UI shows, not about how things are created). */
+export function as(request: APIRequestContext, user: Pick<TestUser, 'accessToken'>) {
+  const headers = { Authorization: `Bearer ${user.accessToken}` }
+  const run = async (method: 'post' | 'patch' | 'get', path: string, data?: unknown) => {
+    const res = await request[method](path, { data, headers })
+    if (!res.ok()) throw new Error(`${method.toUpperCase()} ${path} -> ${res.status()} ${await res.text()}`)
+    return res.status() === 204 || res.status() === 202 ? null : res.json()
+  }
+  return {
+    post: (content: string, extra: Record<string, unknown> = {}) => run('post', '/api/posts', { content, ...extra }),
+    follow: (username: string) => run('post', `/api/users/${username}/follow`),
+    repost: (postId: number) => run('post', `/api/posts/${postId}/repost`),
+    setProtected: () => run('patch', '/api/users/me', { protectedAccount: true }),
+    approve: (username: string) => run('post', `/api/users/me/follow-requests/${username}/approve`),
+  }
+}

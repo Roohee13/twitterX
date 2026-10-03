@@ -6,7 +6,8 @@ import { RegisterPage } from './features/auth/RegisterPage'
 import { ResetPasswordPage } from './features/auth/ResetPasswordPage'
 import { VerifyEmailPage } from './features/auth/VerifyEmailPage'
 import { AppShell } from './features/shell/AppShell'
-import { HomePage, NotFoundPage } from './features/shell/pages'
+import { HomePage } from './features/home/HomePage'
+import { NotFoundPage } from './features/shell/pages'
 
 export const router = createBrowserRouter([
   {
