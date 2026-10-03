@@ -1,4 +1,5 @@
 import { Navigate, Outlet, useLocation } from 'react-router'
+import { safeRedirect } from './redirect'
 import { Button } from '../../components/ui/Button'
 import { Spinner } from '../../components/ui/Spinner'
 import { useAuth } from './AuthContext'
@@ -26,10 +27,12 @@ export function RequireAuth() {
   return <Outlet />
 }
 
-/** Login and register: a signed-in visitor goes home instead. */
+/** Login, register and forgot-password: a signed-in visitor is sent on to where they were going, or home. */
 export function GuestOnly() {
   const { status } = useAuth()
+  const location = useLocation()
   if (status === 'loading') return <FullScreen><Spinner label="Restoring your session" /></FullScreen>
-  if (status === 'authenticated') return <Navigate to="/" replace />
+  // After signing in, go back to the page RequireAuth sent the visitor away from (checked to be a path inside this app).
+  if (status === 'authenticated') return <Navigate to={safeRedirect((location.state as { from?: unknown } | null)?.from)} replace />
   return <Outlet />
 }

@@ -8,7 +8,7 @@ const backend = process.env.VITE_BACKEND_URL ?? 'http://localhost:8080'
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
-    port: 5173,
+    port: Number(process.env.VITE_PORT ?? 5173),
     strictPort: true,
     proxy: {
       '/api': { target: backend, changeOrigin: true },

@@ -4,3 +4,4 @@ e2e/results
 e2e/screenshots
 playwright-report
 *.local
+e2e/backend.log

@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { Link, NavLink, Outlet } from 'react-router'
 import { Avatar } from '../../components/ui/Avatar'
 import { useAuth, useCurrentUser } from '../auth/AuthContext'
+import { VerificationBanner } from '../auth/VerificationBanner'
 import { api } from '../../lib/api'
 import type { TrendingHashtag } from '../../lib/types'
 
@@ -93,6 +94,7 @@ export function AppShell() {
       </header>
 
       <main className="min-h-screen w-full max-w-[600px] border-zinc-800 pb-16 sm:border-x sm:pb-0">
+        <VerificationBanner />
         <Outlet />
       </main>
 

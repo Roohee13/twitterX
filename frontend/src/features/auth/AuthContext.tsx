@@ -22,6 +22,8 @@ interface AuthContextValue {
   logout: () => Promise<void>
   /** Replaces the cached current user, e.g. after editing the profile. */
   setUser: (user: UserResponse) => void
+  /** Re-reads the current user from the server (e.g. after the email was verified). */
+  refreshUser: () => Promise<void>
   /** Re-run the session restore after the server was unreachable. */
   retry: () => void
 }
@@ -115,9 +117,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signedOut()
   }, [signedOut])
 
+  const refreshUser = useCallback(async () => {
+    setUserState(await api.get<UserResponse>('/api/users/me'))
+  }, [])
+
   const value = useMemo<AuthContextValue>(
-    () => ({ status, user, login, register, logout, setUser: setUserState, retry: () => { setStatus('loading'); setAttempt((n) => n + 1) } }),
-    [status, user, login, register, logout],
+    () => ({
+      status,
+      user,
+      login,
+      register,
+      logout,
+      setUser: setUserState,
+      refreshUser,
+      retry: () => {
+        setStatus('loading')
+        setAttempt((n) => n + 1)
+      },
+    }),
+    [status, user, login, register, logout, refreshUser],
   )
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

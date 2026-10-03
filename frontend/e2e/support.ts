@@ -39,3 +39,22 @@ export async function signIn(page: Page, user: Pick<TestUser, 'refreshToken'>, p
 }
 
 export const shot = (name: string) => ({ path: `e2e/screenshots/${name}.png`, fullPage: false })
+
+/**
+ * The backend only logs emails when no SMTP server is configured, so the tests read the link from its log
+ * (scripts/e2e-backend.sh writes it to e2e/backend.log). Returns the app path with the token, e.g. `/verify-email?token=...`.
+ * Waits for the newest matching line, so a resend is picked up instead of the earlier email.
+ */
+export async function emailedLink(email: string, kind: 'verify-email' | 'reset-password', previous?: string): Promise<string> {
+  const { readFile } = await import('node:fs/promises')
+  const logPath = `${process.cwd()}/e2e/backend.log`
+  const deadline = Date.now() + 15_000
+  while (Date.now() < deadline) {
+    const text = await readFile(logPath, 'utf8').catch(() => '')
+    const matches = [...text.matchAll(new RegExp(`To: ${email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\|[^\\n]*?(/${kind}\\?token=[\\w-]+)`, 'g'))]
+    const latest = matches.at(-1)?.[1]
+    if (latest && latest !== previous) return latest
+    await new Promise((r) => setTimeout(r, 250))
+  }
+  throw new Error(`No ${kind} email for ${email} found in ${logPath}. Was the backend started with scripts/e2e-backend.sh?`)
+}
