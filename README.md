@@ -167,6 +167,37 @@ The owner is notified of requests (`FOLLOW_REQUEST`). Turning protection off app
 ## Email
 
 Registering and changing your email send a verification link (`emailVerified` in the user response; accounts that
-existed before this feature count as verified). Nothing is blocked for unverified users yet. Links point to
-`FRONTEND_URL/verify-email?token=…` and `FRONTEND_URL/reset-password?token=…`. Set `SPRING_MAIL_HOST` (plus
-`_PORT`, `_USERNAME`, `_PASSWORD`) to send real email; without it the app logs the email, link included, instead.
+existed before this feature count as verified), and "forgot password" sends a reset link. Nothing is blocked for unverified users yet.
+Links point to `FRONTEND_URL/verify-email?token=…` and `FRONTEND_URL/reset-password?token=…` (`FRONTEND_URL` defaults to
+`http://localhost:5173`; set it if the frontend runs elsewhere). Sender: `MAIL_FROM`.
+
+Email is optional: without `SPRING_MAIL_HOST` the app logs each message, link included, instead of sending it
+(look for `Email not sent (no SMTP configured)` in the console). A failed send is logged and never breaks the request.
+
+**Development: Mailpit** (free, local, no account). It is a fake mail server with a web inbox; nothing leaves your computer.
+
+```bash
+docker compose up -d mailpit      # SMTP on :1025, inbox at http://localhost:8025
+```
+
+Run the backend with `SPRING_MAIL_HOST=localhost` and `SPRING_MAIL_PORT=1025` (in IntelliJ: Run > Edit Configurations > Environment variables;
+remove any `SPRING_MAIL_USERNAME`, `SPRING_MAIL_PASSWORD` and `SPRING_MAIL_PROPERTIES_*` left over from another provider, because Mailpit has no login).
+Then register on the site and open the email at http://localhost:8025.
+
+**Production: a transactional email service** (Brevo, Resend, Amazon SES, Mailgun, Postmark; several have free tiers). No code change, only
+environment variables set in your hosting platform (never committed):
+
+```
+SPRING_MAIL_HOST=<the provider's SMTP host>
+SPRING_MAIL_PORT=587
+SPRING_MAIL_USERNAME=<provider login>
+SPRING_MAIL_PASSWORD=<provider SMTP key>
+SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH=true
+SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE=true
+MAIL_FROM=noreply@yourdomain.com
+FRONTEND_URL=https://your-site.example
+```
+
+To reach arbitrary recipients (and stay out of spam) verify your sending domain with the provider (a few DNS records). A personal Gmail account
+works for a quick test with an App Password but is not suitable for production (daily limits, blocked logins). Mail is deliberately not part of
+`/actuator/health`, so a mail outage never makes the app report DOWN.

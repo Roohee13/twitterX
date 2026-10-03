@@ -37,8 +37,9 @@ spring:
           time_zone: UTC
 
 # Only the health endpoint is exposed, without details. Use /actuator/health/liveness for "is the process up" and
-# /actuator/health/readiness for "can it serve traffic" (database only). Redis is deliberately not part of health:
-# the app degrades gracefully without it, so a Redis outage must not take instances out of rotation.
+# /actuator/health/readiness for "can it serve traffic" (database only). Redis and mail are deliberately not part of health:
+# the app degrades gracefully without them (it falls back to local delivery / logging the email), so an outage of either
+# must not take instances out of rotation or make the app report DOWN.
 management:
   endpoints:
     web:
@@ -53,6 +54,8 @@ management:
           include: readinessState,db
   health:
     redis:
+      enabled: false
+    mail:
       enabled: false
 
 server:
