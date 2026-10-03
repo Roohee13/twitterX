@@ -14,7 +14,11 @@ createdb -U postgres xclone_test     # once, used by the tests
 ./mvnw spring-boot:run
 ```
 
-Tables are created automatically (`ddl-auto: update`). Configuration comes from environment variables; see `.env.example`. The defaults connect to `localhost:5432/xclone` as `postgres`/`postgres`. **Set `JWT_SECRET` in any real environment.**
+The schema is managed by Flyway (`src/main/resources/db/migration`) and applied on startup; Hibernate only validates it. **Any entity change needs a new `V<n>__*.sql` migration.** Configuration comes from environment variables; see `.env.example`. The defaults connect to `localhost:5432/xclone` as `postgres`/`postgres`. **`JWT_SECRET` (at least 32 bytes) is required**, so export one before running, e.g. `export JWT_SECRET=$(openssl rand -hex 32)`.
+
+### Neon
+
+Use Neon's pooled connection string (host contains `-pooler`) as `DB_URL` and its direct string as `MIGRATION_DB_URL`, both with `?sslmode=require`; see `.env.example`. A database that already has the tables from an older `ddl-auto` setup is adopted as V1 automatically.
 
 R2 is optional for local development. Without `R2_ACCOUNT_ID`/`R2_ACCESS_KEY`/`R2_SECRET_KEY`, everything works except media endpoints, which return `503`.
 

@@ -5,9 +5,22 @@ spring:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/xclone}
     username: ${DB_USER:postgres}
     password: ${DB_PASSWORD:postgres}
+    # Keep this small: on Neon the pooled (-pooler) URL multiplexes connections through PgBouncer.
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+      minimum-idle: ${DB_POOL_MIN_IDLE:2}
+  flyway:
+    # Migrations need session features PgBouncer's transaction mode lacks (advisory locks), so on Neon point
+    # MIGRATION_DB_URL at the direct (non-pooler) URL. Defaults to the app's own datasource.
+    url: ${MIGRATION_DB_URL:${DB_URL:jdbc:postgresql://localhost:5432/xclone}}
+    user: ${MIGRATION_DB_USER:${DB_USER:postgres}}
+    password: ${MIGRATION_DB_PASSWORD:${DB_PASSWORD:postgres}}
+    # Databases created before Flyway (ddl-auto=update) are adopted as V1; empty ones run V1 normally.
+    baseline-on-migrate: true
+    baseline-version: 1
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     open-in-view: false
     properties:
       hibernate:
@@ -21,8 +34,8 @@ app:
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173, http://localhost:8080}
   jwt:
-    # Must be at least 32 bytes (256 bits). Override in every real environment.
-    secret: ${JWT_SECRET:dev-only-secret-change-me-dev-only-secret-change-me}
+    # Required, at least 32 bytes (256 bits). No default, so a misconfigured deploy fails at startup.
+    secret: ${JWT_SECRET}
     access-ttl: ${JWT_ACCESS_TTL:1d}
     refresh-ttl: ${JWT_REFRESH_TTL:30d}
   r2:
@@ -33,3 +46,8 @@ app:
     public-base-url: ${R2_PUBLIC_BASE_URL:}
     presign-ttl: ${R2_PRESIGN_TTL:10m}
     max-image-bytes: ${R2_MAX_IMAGE_BYTES:5242880}
+  mail:
+    from: ${MAIL_FROM:no-reply@xclone.local}
+    frontend-url: ${FRONTEND_URL:http://localhost:5173}
+    verify-ttl: ${MAIL_VERIFY_TTL:24h}
+    reset-ttl: ${MAIL_RESET_TTL:1h}
