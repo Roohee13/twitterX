@@ -22,8 +22,10 @@ spring:
     url: ${MIGRATION_DB_URL:${DB_URL:jdbc:postgresql://localhost:5432/xclone}}
     user: ${MIGRATION_DB_USER:${DB_USER:postgres}}
     password: ${MIGRATION_DB_PASSWORD:${DB_PASSWORD:postgres}}
-    # Databases created before Flyway (ddl-auto=update) are adopted as V1; empty ones run V1 normally.
-    baseline-on-migrate: true
+    # Empty databases run V1 normally. To adopt a database that already has the full schema from the old
+    # ddl-auto=update setup, set FLYWAY_BASELINE_ON_MIGRATE=true once; it is off by default so a partly-created or
+    # shared database fails loudly instead of being silently marked as migrated.
+    baseline-on-migrate: ${FLYWAY_BASELINE_ON_MIGRATE:false}
     baseline-version: 1
   jpa:
     hibernate:

@@ -40,11 +40,12 @@ Redis-backed fixed-window limits (`ratelimit/RateLimitRules.java`), answering `4
 
 Reads are not limited. If Redis is unreachable the limiter fails open and retries Redis after 30 s. Behind a load balancer set
 `FORWARD_HEADERS_STRATEGY=framework` so limits use the real client IP; leave it unset otherwise (the header is spoofable).
+**Important:** on a managed host (Render, Fly, Railway, a cloud load balancer) the app sits behind a proxy, so without that setting every user shares the proxy's IP and therefore one login limit. Set it there, and only if clients cannot reach the app except through the proxy.
 `RATE_LIMIT_ENABLED=false` turns it off. Messages sent over the WebSocket are not covered yet.
 
 ### Neon
 
-Use Neon's pooled connection string (host contains `-pooler`) as `DB_URL` and its direct string as `MIGRATION_DB_URL`, both with `?sslmode=require`; see `.env.example`. A database that already has the tables from an older `ddl-auto` setup is adopted as V1 automatically.
+Use Neon's pooled connection string (host contains `-pooler`) as `DB_URL` and its direct string as `MIGRATION_DB_URL`, both with `?sslmode=require`; see `.env.example`. Use an **empty** database: V1 creates the whole schema. A database that already has the complete schema from the older `ddl-auto` setup (e.g. a local `xclone`) must be adopted once with `FLYWAY_BASELINE_ON_MIGRATE=true`; a non-empty database without it fails at startup rather than being half-adopted.
 
 R2 is optional for local development. Without `R2_ACCOUNT_ID`/`R2_ACCESS_KEY`/`R2_SECRET_KEY`, everything works except media endpoints, which return `503`.
 
