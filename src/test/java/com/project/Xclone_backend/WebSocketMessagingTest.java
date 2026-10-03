@@ -186,6 +186,59 @@ class WebSocketMessagingTest {
         assertEquals(1, messageCount(conv));
     }
 
+    // --- live notifications ---
+
+    @Test
+    void followNotificationIsPushedOnlyToTheFollowedUser() throws Exception {
+        Account alice = newUser();
+        Account bob = newUser();
+        Account carol = newUser();
+        BlockingQueue<Map<String, Object>> bobFeed =
+                connect(bob.token()).subscribe("/user/queue/notifications", userRegistry, bob.id());
+        BlockingQueue<Map<String, Object>> aliceFeed =
+                connect(alice.token()).subscribe("/user/queue/notifications", userRegistry, alice.id());
+        BlockingQueue<Map<String, Object>> carolFeed =
+                connect(carol.token()).subscribe("/user/queue/notifications", userRegistry, carol.id());
+
+        assertEquals(204, post(alice, "/api/users/" + bob.username() + "/follow").statusCode());
+
+        Map<String, Object> pushed = next(bobFeed);
+        assertEquals("FOLLOW", pushed.get("type"));
+        assertEquals(alice.username(), ((Map<?, ?>) pushed.get("actor")).get("username"));
+        assertEquals(false, pushed.get("read"));
+        assertNotNull(pushed.get("id"));
+        assertNotNull(pushed.get("createdAt"));
+        assertNone(aliceFeed);
+        assertNone(carolFeed);
+    }
+
+    @Test
+    void blockedActorDoesNotProduceAPush() throws Exception {
+        Account alice = newUser();
+        Account bob = newUser();
+        jdbc.update("insert into blocks (blocker_id, blocked_id, created_at) values (?, ?, now())", bob.id(),
+                alice.id());
+        BlockingQueue<Map<String, Object>> bobFeed =
+                connect(bob.token()).subscribe("/user/queue/notifications", userRegistry, bob.id());
+
+        post(alice, "/api/users/" + bob.username() + "/follow"); // rejected, and must not notify
+
+        assertNone(bobFeed);
+        assertEquals(0, jdbc.queryForObject("select count(*) from notifications where recipient_id = ?",
+                Integer.class, bob.id()));
+    }
+
+    @Test
+    void offlineRecipientStillGetsTheNotificationOverRest() throws Exception {
+        Account alice = newUser();
+        Account bob = newUser();
+
+        assertEquals(204, post(alice, "/api/users/" + bob.username() + "/follow").statusCode());
+
+        assertEquals(1, jdbc.queryForObject("select count(*) from notifications where recipient_id = ?",
+                Integer.class, bob.id()));
+    }
+
     // --- authorization and validation ---
 
     @Test
@@ -237,6 +290,13 @@ class WebSocketMessagingTest {
     }
 
     // --- helpers ---
+
+    private HttpResponse<String> post(Account as, String path) throws Exception {
+        return HttpClient.newHttpClient().send(HttpRequest.newBuilder()
+                .uri(URI.create("http://localhost:" + port + path))
+                .header("Authorization", "Bearer " + as.token())
+                .POST(HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString());
+    }
 
     record Account(long id, String username, String token) {
     }

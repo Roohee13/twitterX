@@ -43,6 +43,22 @@ Reads are not limited. If Redis is unreachable the limiter fails open and retrie
 **Important:** on a managed host (Render, Fly, Railway, a cloud load balancer) the app sits behind a proxy, so without that setting every user shares the proxy's IP and therefore one login limit. Set it there, and only if clients cannot reach the app except through the proxy.
 `RATE_LIMIT_ENABLED=false` turns it off. Messages sent over the WebSocket are not covered yet.
 
+### Real-time (WebSocket / STOMP)
+
+Connect to `ws://<host>/ws` and send the access token in the STOMP `CONNECT` frame header `Authorization: Bearer <token>`
+(browsers cannot set headers on the handshake). Subscribe to per-user queues:
+
+| Destination | Payload |
+|---|---|
+| `/user/queue/notifications` | a new notification, same shape as items from `GET /notifications`. Pushed after the action commits; none for blocked pairs or self-actions |
+| `/user/queue/messages` | a direct message received |
+| `/user/queue/sent` | ack of a message you sent over WebSocket |
+| `/user/queue/errors` | errors from messages you sent over WebSocket |
+
+Send messages to `/app/conversations/{id}/messages`. Pushes are best-effort: a client that is offline or reconnecting misses them, so
+on connect (and reconnect) fetch `GET /notifications/unread-count` and the latest page over REST, then increment from pushes.
+The broker is in-memory, so this works on a single instance only (multi-instance relay is a later step).
+
 ### Neon
 
 Use Neon's pooled connection string (host contains `-pooler`) as `DB_URL` and its direct string as `MIGRATION_DB_URL`, both with `?sslmode=require`; see `.env.example`. Use an **empty** database: V1 creates the whole schema. A database that already has the complete schema from the older `ddl-auto` setup (e.g. a local `xclone`) must be adopted once with `FLYWAY_BASELINE_ON_MIGRATE=true`; a non-empty database without it fails at startup rather than being half-adopted.

@@ -3,6 +3,7 @@ package com.project.Xclone_backend.notification;
 import java.time.Instant;
 import java.util.List;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,8 +26,12 @@ public class NotificationService {
     private final NotificationRepository notificationRepository;
     private final BlockRepository blockRepository;
     private final UserMapper userMapper;
+    private final ApplicationEventPublisher events;
 
-    /** Joins the caller's transaction. Skips self-notifications and pairs with a block in either direction. */
+    /**
+     * Joins the caller's transaction. Skips self-notifications and pairs with a block in either direction. After
+     * commit the notification is also pushed live to the recipient (see NotificationDeliveryListener).
+     */
     @Transactional
     public void notify(User recipient, User actor, NotificationType type, Post post) {
         if (recipient.getId().equals(actor.getId()) || blockRepository.existsBetween(recipient.getId(), actor.getId())) {
@@ -38,6 +43,7 @@ public class NotificationService {
         n.setType(type);
         n.setPost(post);
         notificationRepository.save(n);
+        events.publishEvent(new NotificationCreatedEvent(recipient.getId(), toResponse(n)));
     }
 
     @Transactional
