@@ -75,7 +75,8 @@ public class SuggestionService {
             }
         }
         return rows.stream().map(r -> new SuggestionResponse(
-                userMapper.toSummary(r.getId(), r.getUsername(), r.getDisplayName(), r.getAvatarKey()),
+                userMapper.toSummary(r.getId(), r.getUsername(), r.getDisplayName(), r.getAvatarKey(),
+                        Boolean.TRUE.equals(r.getProtectedAccount())),
                 r.getMutuals())).toList();
     }
 

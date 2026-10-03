@@ -128,11 +128,13 @@ All endpoints are under `/api`. Send `Authorization: Bearer <accessToken>` for a
 | POST | `/users/me/verify-email` | ✓ | resend the verification email; 409 if already verified |
 | POST | `/auth/forgot-password` | – | `{email}`; always 204 so it can't be used to find accounts; emails a reset link (valid 1h) to active accounts |
 | POST | `/auth/reset-password` | – | `{token, newPassword}`; sets the password and signs out every session; 400 if invalid, expired or already used |
-| GET / PATCH | `/users/me` | ✓ | PATCH `{displayName?, bio?, avatarKey?, bannerKey?}`; `""` clears |
+| GET / PATCH | `/users/me` | ✓ | PATCH `{displayName?, bio?, avatarKey?, bannerKey?, protectedAccount?}`; `""` clears. See *Protected accounts* below |
 | GET | `/users/search?q=` | – | prefix match on username / display name |
 | GET | `/users/me/blocks` | ✓ | users you blocked, paged |
 | GET | `/users/{username}` | optional | profile + counts + `followedByMe` + `blockedByMe` + `mutedByMe` |
-| POST / DELETE | `/users/{username}/follow` | ✓ | idempotent |
+| POST / DELETE | `/users/{username}/follow` | ✓ | idempotent. POST answers `204` (now following) or `202` (account is protected: request pending approval); DELETE unfollows or withdraws a pending request |
+| GET | `/users/me/follow-requests` | ✓ | pending requests to follow you, paged |
+| POST | `/users/me/follow-requests/{username}/approve`, `/deny` | ✓ | `404` if there is no pending request from that user |
 | POST / DELETE | `/users/{username}/block` | ✓ | idempotent; removes follows both ways. Blocked pairs can't follow, like or reply to each other or see each other's posts (403), and are hidden from each other's reply and follower lists |
 | POST / DELETE | `/users/{username}/mute` | ✓ | idempotent; silent and one-way: their posts (and reposts of them) leave your timeline, and notifications from them are hidden and not pushed live. Follows, replies, likes and DMs are unaffected, and they are not told. Unmuting restores everything |
 | GET | `/users/me/mutes` | ✓ | users you muted, paged |
@@ -153,6 +155,12 @@ All endpoints are under `/api`. Send `Authorization: Bearer <accessToken>` for a
 | DELETE | `/notifications/{id}` | ✓ | |
 | GET | `/timeline` | ✓ | your posts + people you follow, newest first |
 | POST | `/media/upload-url` | ✓ | see above |
+
+**Protected accounts.** With `protectedAccount: true`, following needs the owner's approval, and the account's posts, replies, likes tab, follower and
+following lists are visible only to the owner and approved followers (everyone else, including anonymous visitors, gets `403`; the profile itself stays public and
+shows `protectedAccount` and `followRequestedByMe`). Existing followers stay. Their posts are also left out of search, hashtag pages, trending, reply lists and
+quote embeds for everyone else, and cannot be reposted or quoted by anyone. Replies and mentions from a protected account do not notify people who cannot see them.
+The owner is notified of requests (`FOLLOW_REQUEST`). Turning protection off approves all pending requests.
 
 **Pagination.** Paged endpoints accept `?cursor=&limit=` (default 20, max 50) and return `{ items, nextCursor }`. Pass `nextCursor` back to get the next page; `null` means there are no more pages.
 

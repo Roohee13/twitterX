@@ -21,14 +21,14 @@ public interface HashtagRepository extends JpaRepository<Hashtag, Long> {
     List<Hashtag> findByNameIn(Collection<String> names);
 
     /**
-     * Tags used by live posts created since {@code since}, ranked by distinct authors (so one account spamming a
+     * Tags used by live posts of public accounts created since {@code since}, ranked by distinct authors (so one account spamming a
      * tag cannot trend it alone), then by post count, then name for a stable order.
      */
     @Query("""
             select new com.project.Xclone_backend.hashtag.HashtagDtos$TrendingHashtag(
                    h.name, count(distinct p.id), count(distinct p.author.id))
             from Post p join p.hashtags h
-            where p.deleted = false and p.createdAt >= :since
+            where p.deleted = false and p.author.protectedAccount = false and p.createdAt >= :since
             group by h.name
             order by count(distinct p.author.id) desc, count(distinct p.id) desc, h.name asc
             """)

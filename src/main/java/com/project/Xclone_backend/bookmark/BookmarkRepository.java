@@ -26,10 +26,12 @@ public interface BookmarkRepository extends JpaRepository<Bookmark, Long> {
     @Query("delete from Bookmark b where b.user.id = :userId")
     void deleteAllByUser(Long userId);
 
-    /** Posts a user bookmarked, most recently bookmarked first. Deleted posts are skipped. */
+    /** Posts a user bookmarked, most recently bookmarked first. Deleted posts, and posts of protected accounts the user no longer follows, are skipped. */
     @Query("""
             select b from Bookmark b join fetch b.post p join fetch p.author
-            where b.user.id = :userId and p.deleted = false and b.id < :cursor order by b.id desc
+            where b.user.id = :viewerId and p.deleted = false and b.id < :cursor
+              and """ + com.project.Xclone_backend.post.PostVisibility.POST_VISIBLE + """
+            order by b.id desc
             """)
-    List<Bookmark> findUserBookmarks(Long userId, long cursor, Limit limit);
+    List<Bookmark> findUserBookmarks(Long viewerId, long cursor, Limit limit);
 }

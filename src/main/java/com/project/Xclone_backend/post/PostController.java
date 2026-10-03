@@ -139,9 +139,9 @@ public class PostController {
     }
 
     @GetMapping("/posts/{id}/likes")
-    public CursorPage<UserSummary> likers(@PathVariable Long id,
+    public CursorPage<UserSummary> likers(@PathVariable Long id, @AuthenticationPrincipal AuthUser me,
             @RequestParam(required = false) Long cursor, @RequestParam(required = false) Integer limit) {
-        return postService.likers(id, cursor, limit);
+        return postService.likers(id, idOf(me), cursor, limit);
     }
 
     @GetMapping("/users/{username}/posts")

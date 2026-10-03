@@ -16,9 +16,13 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     @Query("select p from Post p join fetch p.author where p.id = :id and p.deleted = false and p.repostOf is null")
     Optional<Post> findLive(Long id);
 
-    /** Live posts by id, authors fetched; used to render the quoted post of quote posts in one query. */
-    @Query("select p from Post p join fetch p.author where p.id in :ids and p.deleted = false")
-    List<Post> findLiveByIds(Collection<Long> ids);
+    /**
+     * Live posts by id the viewer may see, authors fetched; used to render the quoted post of quote posts in one query.
+     * A quoted post that became protected renders as missing for viewers who may not see it.
+     */
+    @Query("select p from Post p join fetch p.author where p.id in :ids and p.deleted = false and "
+            + PostVisibility.POST_VISIBLE)
+    List<Post> findLiveVisibleByIds(Collection<Long> ids, Long viewerId);
 
     /** Conversation roots by id, deleted or not: a deleted top post must keep governing who may reply. */
     @Query("select p from Post p join fetch p.author where p.id in :ids")
@@ -37,9 +41,10 @@ public interface PostRepository extends JpaRepository<Post, Long> {
             select p from Post p join fetch p.author left join fetch p.repostOf o left join fetch o.author
             where p.author.id = :authorId and p.parent is null and p.deleted = false and p.id < :cursor
               and (o is null or o.deleted = false)
+              and """ + PostVisibility.ORIGINAL_VISIBLE + """
             order by p.id desc
             """)
-    List<Post> findUserPosts(Long authorId, long cursor, Limit limit);
+    List<Post> findUserPosts(Long authorId, Long viewerId, long cursor, Limit limit);
 
     /** Replies by one author, newest first. */
     @Query("""
@@ -56,6 +61,7 @@ public interface PostRepository extends JpaRepository<Post, Long> {
               and (:viewerId is null or not exists (select 1 from Block b
                    where (b.blocker.id = :viewerId and b.blocked.id = p.author.id)
                       or (b.blocker.id = p.author.id and b.blocked.id = :viewerId)))
+              and """ + PostVisibility.POST_VISIBLE + """
             order by p.id asc
             """)
     List<Post> findReplies(Long parentId, Long viewerId, long cursor, Limit limit);
@@ -64,9 +70,10 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     @Query("""
             select p from Post p join fetch p.author join p.hashtags h
             where h.name = :name and p.deleted = false and p.id < :cursor
+              and """ + PostVisibility.POST_VISIBLE + """
             order by p.id desc
             """)
-    List<Post> findByHashtag(String name, long cursor, Limit limit);
+    List<Post> findByHashtag(String name, Long viewerId, long cursor, Limit limit);
 
     /**
      * Posts and replies whose text contains the (already lower-cased, LIKE-escaped) pattern, newest first.
@@ -79,6 +86,7 @@ public interface PostRepository extends JpaRepository<Post, Long> {
               and (:viewerId is null or not exists (select 1 from Block b
                    where (b.blocker.id = :viewerId and b.blocked.id = p.author.id)
                       or (b.blocker.id = p.author.id and b.blocked.id = :viewerId)))
+              and """ + PostVisibility.POST_VISIBLE + """
             order by p.id desc
             """)
     List<Post> searchByContent(String pattern, Long viewerId, long cursor, Limit limit);
@@ -91,22 +99,23 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     @Query("""
             select p,
                    case when exists (select 1 from PostLike l
-                                     where l.user.id = :userId and l.post.id = coalesce(o.id, p.id))
+                                     where l.user.id = :viewerId and l.post.id = coalesce(o.id, p.id))
                         then true else false end,
                    case when exists (select 1 from Post r
-                                     where r.author.id = :userId and r.deleted = false
+                                     where r.author.id = :viewerId and r.deleted = false
                                        and r.repostOf.id = coalesce(o.id, p.id))
                         then true else false end
             from Post p join fetch p.author left join fetch p.repostOf o left join fetch o.author
-            where (p.author.id = :userId
-                   or p.author.id in (select f.followee.id from Follow f where f.follower.id = :userId))
+            where (p.author.id = :viewerId
+                   or p.author.id in (select f.followee.id from Follow f where f.follower.id = :viewerId))
               and p.parent is null and p.deleted = false and p.id < :cursor
               and (o is null or o.deleted = false)
-              and not exists (select 1 from Mute m where m.muter.id = :userId
+              and not exists (select 1 from Mute m where m.muter.id = :viewerId
                               and (m.muted.id = p.author.id or m.muted.id = o.author.id))
+              and """ + PostVisibility.ORIGINAL_VISIBLE + """
             order by p.id desc
             """)
-    List<Object[]> findTimelineWithViewerFlags(Long userId, long cursor, Limit limit);
+    List<Object[]> findTimelineWithViewerFlags(Long viewerId, long cursor, Limit limit);
 
     @Modifying
     @Query("update Post p set p.likeCount = p.likeCount + :delta where p.id = :id")

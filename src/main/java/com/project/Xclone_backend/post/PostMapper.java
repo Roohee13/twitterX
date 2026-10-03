@@ -73,7 +73,7 @@ public class PostMapper {
         List<Long> quotedIds = targets.stream().filter(t -> t.getQuoteOf() != null)
                 .map(t -> t.getQuoteOf().getId()).distinct().toList();
         Map<Long, Post> quoted = quotedIds.isEmpty() ? Map.of()
-                : postRepository.findLiveByIds(quotedIds).stream().collect(Collectors.toMap(Post::getId, q -> q));
+                : postRepository.findLiveVisibleByIds(quotedIds, viewerId).stream().collect(Collectors.toMap(Post::getId, q -> q));
 
         Set<Long> liked = new HashSet<>();
         Set<Long> reposted = new HashSet<>();

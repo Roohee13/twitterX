@@ -38,13 +38,14 @@ public interface LikeRepository extends JpaRepository<PostLike, Long> {
             """)
     List<PostLike> findLikers(Long postId, long cursor, Limit limit);
 
-    /** Posts a user liked, most recently liked first, skipping authors blocked either way with the viewer. */
+    /** Posts a user liked, most recently liked first, skipping authors blocked either way with the viewer and protected authors the viewer may not see. */
     @Query("""
             select l from PostLike l join fetch l.post p join fetch p.author
             where l.user.id = :userId and p.deleted = false and l.id < :cursor
               and (:viewerId is null or not exists (select 1 from Block b
                    where (b.blocker.id = :viewerId and b.blocked.id = p.author.id)
                       or (b.blocker.id = p.author.id and b.blocked.id = :viewerId)))
+              and """ + com.project.Xclone_backend.post.PostVisibility.POST_VISIBLE + """
             order by l.id desc
             """)
     List<PostLike> findUserLikes(Long userId, Long viewerId, long cursor, Limit limit);

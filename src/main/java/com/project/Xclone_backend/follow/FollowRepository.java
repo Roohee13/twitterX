@@ -65,4 +65,13 @@ public interface FollowRepository extends JpaRepository<Follow, Long> {
     @Query(value = "select followee_id from follows group by followee_id order by count(*) desc, followee_id desc limit :limit",
             nativeQuery = true)
     List<Long> findMostFollowedIds(int limit);
+
+    /** Approves every pending request to {@code targetId} at once (the account went public). */
+    @Modifying
+    @Query(value = """
+            insert into follows (follower_id, followee_id, created_at)
+            select requester_id, target_id, now() from follow_requests where target_id = :targetId
+            on conflict (follower_id, followee_id) do nothing
+            """, nativeQuery = true)
+    int approveAllRequestsTo(Long targetId);
 }

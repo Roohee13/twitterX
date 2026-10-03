@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.project.Xclone_backend.block.BlockRepository;
 import com.project.Xclone_backend.common.ApiException;
 import com.project.Xclone_backend.common.CursorPage;
+import com.project.Xclone_backend.follow.FollowRepository;
 import com.project.Xclone_backend.mute.MuteRepository;
 import com.project.Xclone_backend.notification.NotificationDtos.NotificationResponse;
 import com.project.Xclone_backend.notification.NotificationDtos.UnreadCountResponse;
@@ -27,6 +28,7 @@ public class NotificationService {
     private final NotificationRepository notificationRepository;
     private final BlockRepository blockRepository;
     private final MuteRepository muteRepository;
+    private final FollowRepository followRepository;
     private final UserMapper userMapper;
     private final ApplicationEventPublisher events;
 
@@ -37,6 +39,11 @@ public class NotificationService {
     @Transactional
     public void notify(User recipient, User actor, NotificationType type, Post post) {
         if (recipient.getId().equals(actor.getId()) || blockRepository.existsBetween(recipient.getId(), actor.getId())) {
+            return;
+        }
+        // A protected account's replies and mentions point at posts the recipient may not see, so they are not delivered.
+        if (actor.isProtectedAccount() && (type == NotificationType.REPLY || type == NotificationType.MENTION)
+                && !followRepository.existsByFollowerIdAndFolloweeId(recipient.getId(), actor.getId())) {
             return;
         }
         Notification n = new Notification();
@@ -54,6 +61,16 @@ public class NotificationService {
     @Transactional
     public void removeFollow(Long actorId, Long recipientId) {
         notificationRepository.deleteFollow(actorId, recipientId);
+    }
+
+    @Transactional
+    public void removeFollowRequest(Long actorId, Long recipientId) {
+        notificationRepository.deleteFollowRequest(actorId, recipientId);
+    }
+
+    @Transactional
+    public void removeAllFollowRequestsTo(Long recipientId) {
+        notificationRepository.deleteFollowRequestsTo(recipientId);
     }
 
     @Transactional

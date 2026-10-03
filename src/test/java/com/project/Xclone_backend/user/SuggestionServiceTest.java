@@ -2,6 +2,7 @@ package com.project.Xclone_backend.user;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -30,8 +31,8 @@ class SuggestionServiceTest {
     private final AtomicLong clock = new AtomicLong();
 
     private SuggestionService service(Duration ttl) {
-        when(mapper.toSummary(any(Long.class), any(), any(), any())).thenAnswer(i ->
-                new UserSummary(i.getArgument(0), i.getArgument(1), i.getArgument(2), null));
+        when(mapper.toSummary(any(Long.class), any(), any(), any(), anyBoolean())).thenAnswer(i ->
+                new UserSummary(i.getArgument(0), i.getArgument(1), i.getArgument(2), null, false));
         return new SuggestionService(users, follows, mapper, ttl, clock::get);
     }
 
@@ -51,6 +52,10 @@ class SuggestionServiceTest {
 
             public String getAvatarKey() {
                 return null;
+            }
+
+            public Boolean getProtectedAccount() {
+                return false;
             }
 
             public Long getMutuals() {

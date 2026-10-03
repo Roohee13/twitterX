@@ -41,6 +41,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
         String getAvatarKey();
 
+        Boolean getProtectedAccount();
+
         Long getMutuals();
     }
 
@@ -53,7 +55,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
                 select followee_id from follows where follower_id = :me order by id desc limit :firstHop
             )
             select u.id as "id", u.username as "username", u.display_name as "displayName",
-                   u.avatar_key as "avatarKey", count(*) as "mutuals"
+                   u.avatar_key as "avatarKey", u.protected_account as "protectedAccount", count(*) as "mutuals"
             from my_follows m
             join follows f on f.follower_id = m.followee_id
             join users u on u.id = f.followee_id
@@ -72,7 +74,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
     /** The same exclusions, applied to a given set of candidates (the cached most-followed accounts). */
     @Query(value = """
             select u.id as "id", u.username as "username", u.display_name as "displayName",
-                   u.avatar_key as "avatarKey", 0 as "mutuals"
+                   u.avatar_key as "avatarKey", u.protected_account as "protectedAccount", 0 as "mutuals"
             from users u
             where u.id in (:candidateIds) and u.id <> :me and u.status = 'ACTIVE'
               and not exists (select 1 from follows x where x.follower_id = :me and x.followee_id = u.id)

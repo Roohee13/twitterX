@@ -3,6 +3,7 @@ package com.project.Xclone_backend.user;
 import java.util.List;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -96,6 +97,24 @@ public class UserController {
         return userService.muted(me.id(), cursor, limit);
     }
 
+    @GetMapping("/me/follow-requests")
+    public CursorPage<UserSummary> followRequests(@AuthenticationPrincipal AuthUser me,
+            @RequestParam(required = false) Long cursor, @RequestParam(required = false) Integer limit) {
+        return userService.followRequests(me.id(), cursor, limit);
+    }
+
+    @PostMapping("/me/follow-requests/{username}/approve")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void approveFollowRequest(@PathVariable String username, @AuthenticationPrincipal AuthUser me) {
+        userService.approveFollowRequest(me.id(), username);
+    }
+
+    @PostMapping("/me/follow-requests/{username}/deny")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void denyFollowRequest(@PathVariable String username, @AuthenticationPrincipal AuthUser me) {
+        userService.denyFollowRequest(me.id(), username);
+    }
+
     @GetMapping("/suggestions")
     public List<SuggestionResponse> suggestions(@AuthenticationPrincipal AuthUser me,
             @RequestParam(required = false) Integer limit) {
@@ -112,10 +131,12 @@ public class UserController {
         return userService.profile(username, me == null ? null : me.id());
     }
 
+    /** 204 when you now follow the account, 202 when it is protected and a request is waiting for approval. */
     @PostMapping("/{username}/follow")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void follow(@PathVariable String username, @AuthenticationPrincipal AuthUser me) {
-        userService.follow(me.id(), username);
+    public ResponseEntity<Void> follow(@PathVariable String username, @AuthenticationPrincipal AuthUser me) {
+        UserService.FollowResult result = userService.follow(me.id(), username);
+        return result == UserService.FollowResult.REQUESTED
+                ? ResponseEntity.accepted().build() : ResponseEntity.noContent().build();
     }
 
     @DeleteMapping("/{username}/follow")

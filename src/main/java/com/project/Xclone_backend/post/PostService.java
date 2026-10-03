@@ -85,11 +85,15 @@ public class PostService {
             if (req.replyToId() != null) {
                 throw ApiException.badRequest("A post cannot be both a reply and a quote");
             }
-            post.setQuoteOf(requireLive(req.quotedPostId()));
+            Post quoted = requireLiveVisible(req.quotedPostId(), authorId);
+            if (quoted.getAuthor().isProtectedAccount() && !quoted.getAuthor().getId().equals(authorId)) {
+                throw ApiException.forbidden("Posts from protected accounts cannot be quoted");
+            }
+            post.setQuoteOf(quoted);
         }
         Post parent = null;
         if (req.replyToId() != null) {
-            parent = requireLive(req.replyToId());
+            parent = requireLiveVisible(req.replyToId(), authorId);
             userService.requireNotBlocked(authorId, parent.getAuthor().getId());
             Post root = parent.getRoot() != null ? parent.getRoot() : parent;
             requireCanReply(root, authorId);
@@ -207,7 +211,7 @@ public class PostService {
     /** Only records the report; the reported post is not changed in any way. */
     @Transactional
     public void report(Long postId, Long reporterId, ReportReason reason) {
-        Post post = requireLive(postId);
+        Post post = requireLiveVisible(postId, reporterId);
         if (post.getAuthor().getId().equals(reporterId)) {
             throw ApiException.badRequest("You cannot report your own post");
         }
@@ -218,9 +222,12 @@ public class PostService {
 
     @Transactional
     public void repost(Long postId, Long userId) {
-        Post post = requireLive(postId);
+        Post post = requireLiveVisible(postId, userId);
         if (post.getAuthor().getId().equals(userId)) {
             throw ApiException.badRequest("You cannot repost your own post");
+        }
+        if (post.getAuthor().isProtectedAccount()) {
+            throw ApiException.forbidden("Posts from protected accounts cannot be reposted");
         }
         if (postRepository.repost(userId, postId) > 0) {
             postRepository.addToRepostCount(postId, 1);
@@ -239,7 +246,7 @@ public class PostService {
 
     @Transactional
     public void like(Long postId, Long userId) {
-        Post post = requireLive(postId);
+        Post post = requireLiveVisible(postId, userId);
         userService.requireNotBlocked(userId, post.getAuthor().getId());
         if (likeRepository.like(userId, postId) > 0) {
             postRepository.addToLikeCount(postId, 1);
@@ -258,7 +265,7 @@ public class PostService {
 
     @Transactional
     public void bookmark(Long postId, Long userId) {
-        requireLive(postId);
+        requireLiveVisible(postId, userId);
         if (bookmarkRepository.bookmark(userId, postId) == 0) {
             throw ApiException.conflict("You have already bookmarked this post");
         }
@@ -281,7 +288,7 @@ public class PostService {
 
     @Transactional(readOnly = true)
     public CursorPage<PostResponse> replies(Long postId, Long viewerId, Long cursor, Integer limit) {
-        requireLive(postId);
+        requireLiveVisible(postId, viewerId);
         int n = CursorPage.clampLimit(limit);
         List<Post> rows = postRepository.findReplies(postId, viewerId, cursor == null ? 0L : cursor,
                 Limit.of(n + 1));
@@ -289,8 +296,8 @@ public class PostService {
     }
 
     @Transactional(readOnly = true)
-    public CursorPage<UserSummary> likers(Long postId, Long cursor, Integer limit) {
-        requireLive(postId);
+    public CursorPage<UserSummary> likers(Long postId, Long viewerId, Long cursor, Integer limit) {
+        requireLiveVisible(postId, viewerId);
         int n = CursorPage.clampLimit(limit);
         List<PostLike> rows = likeRepository.findLikers(postId, CursorPage.cursorOrMax(cursor), Limit.of(n + 1));
         return CursorPage.of(rows, n, PostLike::getId,
@@ -302,7 +309,8 @@ public class PostService {
         User user = userService.requireByUsername(username);
         requireVisible(viewerId, user);
         int n = CursorPage.clampLimit(limit);
-        List<Post> rows = postRepository.findUserPosts(user.getId(), CursorPage.cursorOrMax(cursor), Limit.of(n + 1));
+        List<Post> rows = postRepository.findUserPosts(user.getId(), viewerId, CursorPage.cursorOrMax(cursor),
+                Limit.of(n + 1));
         return CursorPage.of(rows, n, Post::getId, page -> postMapper.toResponses(page, viewerId));
     }
 
@@ -330,7 +338,7 @@ public class PostService {
     @Transactional(readOnly = true)
     public CursorPage<PostResponse> hashtagPosts(String name, Long viewerId, Long cursor, Integer limit) {
         int n = CursorPage.clampLimit(limit);
-        List<Post> rows = postRepository.findByHashtag(HashtagService.normalize(name), CursorPage.cursorOrMax(cursor),
+        List<Post> rows = postRepository.findByHashtag(HashtagService.normalize(name), viewerId, CursorPage.cursorOrMax(cursor),
                 Limit.of(n + 1));
         return CursorPage.of(rows, n, Post::getId, page -> postMapper.toResponses(page, viewerId));
     }
@@ -394,6 +402,14 @@ public class PostService {
         if (viewerId != null) {
             userService.requireNotBlocked(viewerId, user.getId());
         }
+        userService.requireCanViewPosts(viewerId, user);
+    }
+
+    /** A live post the viewer is allowed to see: posts of protected accounts are visible to the owner and approved followers only. */
+    private Post requireLiveVisible(Long postId, Long viewerId) {
+        Post post = requireLive(postId);
+        userService.requireCanViewPosts(viewerId, post.getAuthor());
+        return post;
     }
   
     /** Retain-then-add so Hibernate only writes the link rows that actually changed. */

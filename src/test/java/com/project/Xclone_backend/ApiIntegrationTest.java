@@ -1452,6 +1452,193 @@ class ApiIntegrationTest {
         return "{\"username\":\"" + username + "\"}";
     }
 
+    // --- protected accounts ---
+
+    private void follow(Account who, Account target) throws Exception {
+        mvc.perform(auth(post("/api/users/" + target.username() + "/follow"), who)).andExpect(status().isNoContent());
+    }
+
+    private void setProtected(Account owner, boolean value) throws Exception {
+        mvc.perform(json(auth(patch("/api/users/me"), owner), "{\"protectedAccount\":" + value + "}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.protectedAccount").value(value));
+    }
+
+    private List<String> timelineIds(Account viewer) throws Exception {
+        String body = mvc.perform(auth(get("/api/timeline"), viewer)).andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        List<Integer> ids = JsonPath.read(body, "$.items[*].id");
+        return ids.stream().map(String::valueOf).toList();
+    }
+
+    @Test
+    void protectedAccountPostsAreVisibleOnlyToTheOwnerAndApprovedFollowers() throws Exception {
+        Account alice = register(); // becomes protected
+        Account bob = register();   // stranger
+        Account carol = register(); // follows alice before she protects the account
+        String tag = "tag" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+        String needle = "needle" + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
+        follow(carol, alice);
+        long p1 = createPost(alice, "{\"content\":\"" + needle + " #" + tag + "\"}");
+        setProtected(alice, true);
+
+        // A stranger and an anonymous visitor can see the profile, but nothing else.
+        mvc.perform(auth(get("/api/users/" + alice.username()), bob)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.protectedAccount").value(true))
+                .andExpect(jsonPath("$.followRequestedByMe").value(false));
+        for (String path : List.of("/api/posts/" + p1, "/api/posts/" + p1 + "/thread", "/api/posts/" + p1 + "/replies",
+                "/api/posts/" + p1 + "/likes", "/api/users/" + alice.username() + "/posts",
+                "/api/users/" + alice.username() + "/replies", "/api/users/" + alice.username() + "/likes",
+                "/api/users/" + alice.username() + "/followers", "/api/users/" + alice.username() + "/following")) {
+            mvc.perform(auth(get(path), bob)).andExpect(status().isForbidden());
+            mvc.perform(get(path)).andExpect(status().isForbidden());
+        }
+        mvc.perform(auth(post("/api/posts/" + p1 + "/like"), bob)).andExpect(status().isForbidden());
+        mvc.perform(auth(post("/api/posts/" + p1 + "/bookmark"), bob)).andExpect(status().isForbidden());
+        mvc.perform(auth(post("/api/posts/" + p1 + "/repost"), bob)).andExpect(status().isForbidden());
+        mvc.perform(json(auth(post("/api/posts/" + p1 + "/report"), bob), "{\"reason\":\"SPAM\"}"))
+                .andExpect(status().isForbidden());
+        mvc.perform(json(auth(post("/api/posts"), bob), "{\"content\":\"hi\",\"replyToId\":" + p1 + "}"))
+                .andExpect(status().isForbidden());
+        mvc.perform(json(auth(post("/api/posts"), bob), "{\"content\":\"hi\",\"quotedPostId\":" + p1 + "}"))
+                .andExpect(status().isForbidden());
+        // Search, hashtag pages and trending leave protected posts out.
+        mvc.perform(auth(get("/api/posts/search?q=" + needle), bob)).andExpect(jsonPath("$.items", hasSize(0)));
+        mvc.perform(auth(get("/api/hashtags/" + tag + "/posts"), bob)).andExpect(jsonPath("$.items", hasSize(0)));
+        mvc.perform(get("/api/hashtags/" + tag + "/posts")).andExpect(jsonPath("$.items", hasSize(0)));
+        String trending = mvc.perform(get("/api/trending/hashtags")).andReturn().getResponse().getContentAsString();
+        org.assertj.core.api.Assertions.assertThat(trending).doesNotContain(tag);
+
+        // The existing follower keeps access, but still cannot repost or quote.
+        mvc.perform(auth(get("/api/posts/" + p1), carol)).andExpect(status().isOk());
+        mvc.perform(auth(get("/api/users/" + alice.username() + "/posts"), carol)).andExpect(jsonPath("$.items", hasSize(1)));
+        mvc.perform(auth(get("/api/users/" + alice.username() + "/followers"), carol)).andExpect(status().isOk());
+        mvc.perform(auth(get("/api/posts/search?q=" + needle), carol)).andExpect(jsonPath("$.items", hasSize(1)));
+        mvc.perform(auth(get("/api/hashtags/" + tag + "/posts"), carol)).andExpect(jsonPath("$.items", hasSize(1)));
+        mvc.perform(auth(post("/api/posts/" + p1 + "/like"), carol)).andExpect(status().isNoContent());
+        mvc.perform(auth(post("/api/posts/" + p1 + "/bookmark"), carol)).andExpect(status().isNoContent());
+        mvc.perform(auth(get("/api/bookmarks"), carol)).andExpect(jsonPath("$.items", hasSize(1)));
+        mvc.perform(json(auth(post("/api/posts"), carol), "{\"content\":\"reply\",\"replyToId\":" + p1 + "}"))
+                .andExpect(status().isCreated());
+        mvc.perform(auth(post("/api/posts/" + p1 + "/repost"), carol)).andExpect(status().isForbidden());
+        mvc.perform(json(auth(post("/api/posts"), carol), "{\"content\":\"q\",\"quotedPostId\":" + p1 + "}"))
+                .andExpect(status().isForbidden());
+        org.assertj.core.api.Assertions.assertThat(timelineIds(carol)).contains(String.valueOf(p1));
+
+        // The owner always sees everything of hers.
+        mvc.perform(auth(get("/api/posts/" + p1), alice)).andExpect(status().isOk());
+        mvc.perform(auth(get("/api/users/" + alice.username() + "/followers"), alice)).andExpect(status().isOk());
+    }
+
+    @Test
+    void followRequestsAreApprovedDeniedAndWithdrawn() throws Exception {
+        Account alice = register();
+        Account bob = register();
+        Account dave = register();
+        Account erin = register();
+        long secret = createPost(alice, "{\"content\":\"for followers only\"}");
+        setProtected(alice, true);
+
+        // Following asks for approval: 202, a pending request, and a notification for the owner (only one).
+        mvc.perform(auth(post("/api/users/" + alice.username() + "/follow"), bob)).andExpect(status().isAccepted());
+        mvc.perform(auth(post("/api/users/" + alice.username() + "/follow"), bob)).andExpect(status().isAccepted());
+        mvc.perform(auth(get("/api/users/" + alice.username()), bob))
+                .andExpect(jsonPath("$.followRequestedByMe").value(true)).andExpect(jsonPath("$.followedByMe").value(false))
+                .andExpect(jsonPath("$.followerCount").value(0));
+        mvc.perform(auth(get("/api/posts/" + secret), bob)).andExpect(status().isForbidden());
+        mvc.perform(auth(get("/api/users/me/follow-requests"), alice))
+                .andExpect(jsonPath("$.items", hasSize(1)))
+                .andExpect(jsonPath("$.items[0].username").value(bob.username()));
+        mvc.perform(auth(get("/api/notifications"), alice))
+                .andExpect(jsonPath("$.items", hasSize(1)))
+                .andExpect(jsonPath("$.items[0].type").value("FOLLOW_REQUEST"))
+                .andExpect(jsonPath("$.items[0].actor.username").value(bob.username()));
+        mvc.perform(get("/api/users/me/follow-requests")).andExpect(status().isUnauthorized());
+
+        // Withdrawing removes the request and its notification; asking again recreates them.
+        mvc.perform(auth(delete("/api/users/" + alice.username() + "/follow"), bob)).andExpect(status().isNoContent());
+        mvc.perform(auth(get("/api/users/me/follow-requests"), alice)).andExpect(jsonPath("$.items", hasSize(0)));
+        mvc.perform(auth(get("/api/notifications"), alice)).andExpect(jsonPath("$.items", hasSize(0)));
+        mvc.perform(auth(post("/api/users/" + alice.username() + "/follow"), bob)).andExpect(status().isAccepted());
+
+        // Approving makes bob a follower with access, swaps the request notification for a FOLLOW one.
+        mvc.perform(auth(post("/api/users/me/follow-requests/" + bob.username() + "/approve"), alice))
+                .andExpect(status().isNoContent());
+        mvc.perform(auth(post("/api/users/me/follow-requests/" + bob.username() + "/approve"), alice))
+                .andExpect(status().isNotFound());
+        mvc.perform(auth(get("/api/posts/" + secret), bob)).andExpect(status().isOk());
+        mvc.perform(auth(get("/api/users/" + alice.username()), bob))
+                .andExpect(jsonPath("$.followedByMe").value(true)).andExpect(jsonPath("$.followRequestedByMe").value(false))
+                .andExpect(jsonPath("$.followerCount").value(1));
+        mvc.perform(auth(get("/api/notifications"), alice))
+                .andExpect(jsonPath("$.items", hasSize(1))).andExpect(jsonPath("$.items[0].type").value("FOLLOW"));
+        // Following an account you already follow stays a plain follow.
+        mvc.perform(auth(post("/api/users/" + alice.username() + "/follow"), bob)).andExpect(status().isNoContent());
+
+        // Denying leaves dave locked out.
+        mvc.perform(auth(post("/api/users/" + alice.username() + "/follow"), dave)).andExpect(status().isAccepted());
+        mvc.perform(auth(post("/api/users/me/follow-requests/" + dave.username() + "/deny"), alice))
+                .andExpect(status().isNoContent());
+        mvc.perform(auth(post("/api/users/me/follow-requests/" + dave.username() + "/deny"), alice))
+                .andExpect(status().isNotFound());
+        mvc.perform(auth(get("/api/posts/" + secret), dave)).andExpect(status().isForbidden());
+
+        // Blocking cancels a pending request, and a blocked user cannot ask again.
+        mvc.perform(auth(post("/api/users/" + alice.username() + "/follow"), erin)).andExpect(status().isAccepted());
+        mvc.perform(auth(post("/api/users/" + erin.username() + "/block"), alice)).andExpect(status().isNoContent());
+        mvc.perform(auth(get("/api/users/me/follow-requests"), alice)).andExpect(jsonPath("$.items", hasSize(0)));
+        mvc.perform(auth(post("/api/users/" + alice.username() + "/follow"), erin)).andExpect(status().isForbidden());
+
+        // Going public again turns every waiting request into a follow.
+        Account frank = register();
+        mvc.perform(auth(post("/api/users/" + alice.username() + "/follow"), frank)).andExpect(status().isAccepted());
+        setProtected(alice, false);
+        mvc.perform(auth(get("/api/users/me/follow-requests"), alice)).andExpect(jsonPath("$.items", hasSize(0)));
+        mvc.perform(auth(get("/api/users/" + alice.username()), frank)).andExpect(jsonPath("$.followedByMe").value(true));
+        mvc.perform(auth(get("/api/posts/" + secret), dave)).andExpect(status().isOk()); // public again, for everyone
+    }
+
+    @Test
+    void protectedAccountsRepliesAndMentionsDoNotNotifyPeopleWhoCannotSeeThem() throws Exception {
+        Account alice = register();
+        Account follower = register();
+        Account stranger = register();
+        follow(follower, alice);
+        setProtected(alice, true);
+
+        createPost(alice, "{\"content\":\"hi @" + follower.username() + " and @" + stranger.username() + "\"}");
+
+        mvc.perform(auth(get("/api/notifications"), follower))
+                .andExpect(jsonPath("$.items[?(@.type=='MENTION')]", hasSize(1)));
+        mvc.perform(auth(get("/api/notifications"), stranger))
+                .andExpect(jsonPath("$.items[?(@.type=='MENTION')]", hasSize(0)));
+    }
+
+    @Test
+    void postsOfAnAccountThatLaterBecomesProtectedDisappearFromRepostsAndQuotes() throws Exception {
+        Account pam = register();      // posts, later protects
+        Account alice = register();    // reposts pam's post
+        Account carol = register();    // quotes pam's post, follows alice
+        Account bob = register();      // follows alice and carol, never pam
+        long pp = createPost(pam, "{\"content\":\"pam's original\"}");
+        mvc.perform(auth(post("/api/posts/" + pp + "/repost"), alice)).andExpect(status().isNoContent());
+        long quote = createPost(carol, "{\"content\":\"quoting pam\",\"quotedPostId\":" + pp + "}");
+        follow(carol, alice);
+        follow(bob, alice);
+        follow(bob, carol);
+        org.assertj.core.api.Assertions.assertThat(timelineIds(carol)).contains(String.valueOf(pp)); // the repost row
+        mvc.perform(auth(get("/api/posts/" + quote), bob)).andExpect(jsonPath("$.quotedPost.id").value(pp));
+
+        setProtected(pam, true);
+
+        // Neither the repost row nor alice's profile feed shows it to someone who cannot see pam's posts.
+        org.assertj.core.api.Assertions.assertThat(timelineIds(carol)).doesNotContain(String.valueOf(pp));
+        mvc.perform(auth(get("/api/users/" + alice.username() + "/posts"), bob)).andExpect(jsonPath("$.items", hasSize(0)));
+        // The quote post stays, but its embedded original is gone for bob (and still shown to pam herself).
+        mvc.perform(auth(get("/api/posts/" + quote), bob)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.quotedPost").value(nullValue()));
+        mvc.perform(auth(get("/api/posts/" + quote), pam)).andExpect(jsonPath("$.quotedPost.id").value(pp));
+    }
+
     @Test
     void muteHidesAUsersPostsAndNotificationsOneWayAndSilently() throws Exception {
         Account alice = register();
