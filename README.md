@@ -75,6 +75,17 @@ R2 is optional for local development. Without `R2_ACCOUNT_ID`/`R2_ACCESS_KEY`/`R
 
 Run the tests with `./mvnw test`. They need the `xclone_test` database, and R2 is mocked.
 
+## Docker and CI
+
+```bash
+docker build -t xclone-backend .
+docker run -p 8080:8080 --env-file .env xclone-backend   # JWT_SECRET is required; see .env.example
+```
+
+The image is a two-stage build (JDK builds, JRE runs as a non-root user). `docker-compose.yml` only starts a local Redis.
+GitHub Actions (`.github/workflows/ci.yml`) runs `./mvnw verify` against Postgres and Redis service containers on every push to
+`main` and every pull request, then checks that the Docker image builds. Tests need no secrets.
+
 ## Cloudflare R2 setup
 
 1. Create a bucket and an R2 API token with Object Read & Write access.
