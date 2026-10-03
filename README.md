@@ -146,7 +146,7 @@ All endpoints are under `/api`. Send `Authorization: Bearer <accessToken>` for a
 | PATCH | `/posts/{id}/reply-policy` | ✓ | `{replyPolicy}`; author-only, top-level posts only; applies to future replies |
 | GET | `/posts/{id}/thread` | optional | the conversation's top-level post plus the author's own chained posts, oldest first (others' replies excluded) |
 | GET / DELETE | `/posts/{id}` | optional / ✓ | delete is author-only (soft delete) |
-| GET | `/posts/{id}/replies` | optional | paged, oldest first. Every post response includes `conversationId`, `replyPolicy` and `canReply` (for the viewer) |
+| GET | `/posts/{id}/replies` | optional | paged, oldest first. Every post response includes `conversationId`, `replyPolicy` and `canReply` (for the viewer), plus `likedByMe`, `repostedByMe` and `bookmarkedByMe` for the post shown |
 | POST / DELETE | `/posts/{id}/like` | ✓ | idempotent |
 | GET | `/posts/{id}/likes` | – | users who liked, paged |
 | GET | `/notifications` | ✓ | follow / like / reply / mention notifications, newest first, paged; hides blocked or inactive actors |

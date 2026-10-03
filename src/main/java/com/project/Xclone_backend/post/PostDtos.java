@@ -44,11 +44,12 @@ public final class PostDtos {
      * post, {@code quotedPost} is the quoted post (one level only), or null if it has since been deleted.
      * {@code conversationId} is the top-level post of the conversation (the post's own id if it is top-level);
      * {@code replyPolicy} is that conversation's policy and {@code canReply} whether the viewer may reply to it.
+     * {@code likedByMe}, {@code repostedByMe} and {@code bookmarkedByMe} describe the post shown, for the viewer.
      */
     public record PostResponse(Long id, UserSummary author, String content, List<String> mediaUrls,
             Long replyToId, int likeCount, int replyCount, boolean likedByMe, Instant createdAt,
             int repostCount, boolean repostedByMe, UserSummary repostedBy,
             PostResponse quotedPost, List<UserSummary> mentions,
-            Long conversationId, ReplyPolicy replyPolicy, boolean canReply) {
+            Long conversationId, ReplyPolicy replyPolicy, boolean canReply, boolean bookmarkedByMe) {
     }
 }

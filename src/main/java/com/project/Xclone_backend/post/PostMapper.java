@@ -11,6 +11,7 @@ import java.util.stream.Stream;
 
 import org.springframework.stereotype.Component;
 
+import com.project.Xclone_backend.bookmark.BookmarkRepository;
 import com.project.Xclone_backend.config.R2Properties;
 import com.project.Xclone_backend.follow.FollowRepository;
 import com.project.Xclone_backend.like.LikeRepository;
@@ -27,12 +28,13 @@ public class PostMapper {
 
     private final UserMapper userMapper;
     private final LikeRepository likeRepository;
+    private final BookmarkRepository bookmarkRepository;
     private final PostRepository postRepository;
     private final FollowRepository followRepository;
     private final R2Properties r2;
 
-    /** Which of the posts being shown the viewer has liked or reposted, when the caller already knows. */
-    public record ViewerFlags(Set<Long> liked, Set<Long> reposted) {
+    /** Which of the posts being shown the viewer has liked, reposted or bookmarked, when the caller already knows. */
+    public record ViewerFlags(Set<Long> liked, Set<Long> reposted, Set<Long> bookmarked) {
     }
 
     public PostResponse toResponse(Post post, Long viewerId) {
@@ -49,7 +51,7 @@ public class PostMapper {
             return toResponse(post, post.getAuthor().getId());
         }
         Post root = post.getRoot() != null ? post.getRoot() : post;
-        return map(post, false, false, null, null, root.getReplyPolicy(), true);
+        return map(post, false, false, false, null, null, root.getReplyPolicy(), true);
     }
 
     /**
@@ -77,10 +79,12 @@ public class PostMapper {
 
         Set<Long> liked = new HashSet<>();
         Set<Long> reposted = new HashSet<>();
+        Set<Long> bookmarked = new HashSet<>();
         if (viewerId != null) {
             if (known != null) {
                 liked.addAll(known.liked());
                 reposted.addAll(known.reposted());
+                bookmarked.addAll(known.bookmarked());
             }
             List<Long> lookupIds = (known == null
                     ? Stream.concat(targets.stream().map(Post::getId), quoted.keySet().stream())
@@ -88,6 +92,7 @@ public class PostMapper {
             if (!lookupIds.isEmpty()) {
                 liked.addAll(likeRepository.findLikedPostIds(viewerId, lookupIds));
                 reposted.addAll(postRepository.findRepostedPostIds(viewerId, lookupIds));
+                bookmarked.addAll(bookmarkRepository.findBookmarkedPostIds(viewerId, lookupIds));
             }
         }
         ReplyAccess access = replyAccess(Stream.concat(targets.stream(), quoted.values().stream()).toList(), viewerId);
@@ -96,8 +101,10 @@ public class PostMapper {
             UserSummary repostedBy = p.getRepostOf() == null ? null : userMapper.toSummary(p.getAuthor());
             Post q = t.getQuoteOf() == null ? null : quoted.get(t.getQuoteOf().getId());
             PostResponse quotedResponse = q == null ? null
-                    : map(q, liked.contains(q.getId()), reposted.contains(q.getId()), null, null, access);
-            return map(t, liked.contains(t.getId()), reposted.contains(t.getId()), repostedBy, quotedResponse, access);
+                    : map(q, liked.contains(q.getId()), reposted.contains(q.getId()), bookmarked.contains(q.getId()), null,
+                            null, access);
+            return map(t, liked.contains(t.getId()), reposted.contains(t.getId()), bookmarked.contains(t.getId()),
+                    repostedBy, quotedResponse, access);
         }).toList();
     }
 
@@ -153,15 +160,15 @@ public class PostMapper {
         return p.getRepostOf() == null ? p : p.getRepostOf();
     }
 
-    private PostResponse map(Post p, boolean likedByMe, boolean repostedByMe, UserSummary repostedBy,
-            PostResponse quotedPost, ReplyAccess access) {
+    private PostResponse map(Post p, boolean likedByMe, boolean repostedByMe, boolean bookmarkedByMe,
+            UserSummary repostedBy, PostResponse quotedPost, ReplyAccess access) {
         Post root = access.rootOf(p);
-        return map(p, likedByMe, repostedByMe, repostedBy, quotedPost,
+        return map(p, likedByMe, repostedByMe, bookmarkedByMe, repostedBy, quotedPost,
                 root == null ? ReplyPolicy.EVERYONE : root.getReplyPolicy(), access.canReply(root));
     }
 
-    private PostResponse map(Post p, boolean likedByMe, boolean repostedByMe, UserSummary repostedBy,
-            PostResponse quotedPost, ReplyPolicy replyPolicy, boolean canReply) {
+    private PostResponse map(Post p, boolean likedByMe, boolean repostedByMe, boolean bookmarkedByMe,
+            UserSummary repostedBy, PostResponse quotedPost, ReplyPolicy replyPolicy, boolean canReply) {
         List<UserSummary> mentions = p.getMentions().stream()
                 .sorted(Comparator.comparing(User::getUsername)).map(userMapper::toSummary).toList();
         List<String> mediaUrls = p.getMedia().stream().map(m -> r2.publicUrl(m.getR2Key())).toList();
@@ -170,6 +177,6 @@ public class PostMapper {
                 replyToId, p.getLikeCount(), p.getReplyCount(), likedByMe, p.getCreatedAt(),
                 p.getRepostCount(), repostedByMe, repostedBy, quotedPost, mentions,
                 p.getRoot() == null ? p.getId() : p.getRoot().getId(),
-                replyPolicy, canReply);
+                replyPolicy, canReply, bookmarkedByMe);
     }
 }

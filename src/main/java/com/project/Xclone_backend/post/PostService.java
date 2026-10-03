@@ -367,6 +367,7 @@ public class PostService {
         List<Post> posts = new ArrayList<>(rows.size());
         Set<Long> liked = new HashSet<>();
         Set<Long> reposted = new HashSet<>();
+        Set<Long> bookmarked = new HashSet<>();
         for (Object[] row : rows) {
             Post post = (Post) row[0];
             Long shownId = post.getRepostOf() != null ? post.getRepostOf().getId() : post.getId();
@@ -376,9 +377,12 @@ public class PostService {
             if (Boolean.TRUE.equals(row[2])) {
                 reposted.add(shownId);
             }
+            if (Boolean.TRUE.equals(row[3])) {
+                bookmarked.add(shownId);
+            }
             posts.add(post);
         }
-        PostMapper.ViewerFlags flags = new PostMapper.ViewerFlags(liked, reposted);
+        PostMapper.ViewerFlags flags = new PostMapper.ViewerFlags(liked, reposted, bookmarked);
         return CursorPage.of(posts, n, Post::getId, page -> postMapper.toResponses(page, userId, flags));
     }
 

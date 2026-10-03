@@ -1,6 +1,8 @@
 package com.project.Xclone_backend.bookmark;
 
+import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 
 import org.springframework.data.domain.Limit;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -34,4 +36,8 @@ public interface BookmarkRepository extends JpaRepository<Bookmark, Long> {
             order by b.id desc
             """)
     List<Bookmark> findUserBookmarks(Long viewerId, long cursor, Limit limit);
+
+    /** Which of the given posts the user has bookmarked. */
+    @Query("select b.post.id from Bookmark b where b.user.id = :userId and b.post.id in :postIds")
+    Set<Long> findBookmarkedPostIds(Long userId, Collection<Long> postIds);
 }

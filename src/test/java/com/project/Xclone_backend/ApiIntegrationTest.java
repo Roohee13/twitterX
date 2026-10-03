@@ -1694,6 +1694,47 @@ class ApiIntegrationTest {
     }
 
     @Test
+    void postsReportWhetherTheViewerBookmarkedThem() throws Exception {
+        Account alice = register();
+        Account bob = register();
+        Account carol = register();
+        follow(bob, alice);
+        follow(bob, carol);
+        long p1 = createPost(alice, "{\"content\":\"bookmarked by bob\"}");
+        long p2 = createPost(alice, "{\"content\":\"not bookmarked\"}");
+        long reply = createPost(carol, "{\"content\":\"a reply\",\"replyToId\":" + p1 + "}");
+        long quote = createPost(carol, "{\"content\":\"quoting\",\"quotedPostId\":" + p1 + "}");
+        mvc.perform(auth(post("/api/posts/" + p1 + "/repost"), carol)).andExpect(status().isNoContent());
+        mvc.perform(auth(post("/api/posts/" + p1 + "/bookmark"), bob)).andExpect(status().isNoContent());
+        mvc.perform(auth(post("/api/posts/" + reply + "/bookmark"), bob)).andExpect(status().isNoContent());
+
+        // Single post: bob yes/no, everyone else (and anonymous visitors) no.
+        mvc.perform(auth(get("/api/posts/" + p1), bob)).andExpect(jsonPath("$.bookmarkedByMe").value(true));
+        mvc.perform(auth(get("/api/posts/" + p2), bob)).andExpect(jsonPath("$.bookmarkedByMe").value(false));
+        mvc.perform(auth(get("/api/posts/" + p1), carol)).andExpect(jsonPath("$.bookmarkedByMe").value(false));
+        mvc.perform(get("/api/posts/" + p1)).andExpect(jsonPath("$.bookmarkedByMe").value(false));
+
+        // Timeline (computed inside the query): the post itself, and carol's repost row, which describes the original.
+        String timeline = mvc.perform(auth(get("/api/timeline"), bob)).andReturn().getResponse().getContentAsString();
+        assertEquals(List.of(true, true), JsonPath.read(timeline, "$.items[?(@.id==" + p1 + ")].bookmarkedByMe"));
+        assertEquals(List.of(false), JsonPath.read(timeline, "$.items[?(@.id==" + p2 + ")].bookmarkedByMe"));
+
+        // The other list paths: profile feed, replies, a quote post's embedded original, the bookmarks list itself.
+        String profile = mvc.perform(auth(get("/api/users/" + alice.username() + "/posts"), bob)).andReturn().getResponse().getContentAsString();
+        assertEquals(List.of(true), JsonPath.read(profile, "$.items[?(@.id==" + p1 + ")].bookmarkedByMe"));
+        mvc.perform(auth(get("/api/posts/" + p1 + "/replies"), bob)).andExpect(jsonPath("$.items[0].bookmarkedByMe").value(true));
+        mvc.perform(auth(get("/api/posts/" + quote), bob)).andExpect(jsonPath("$.quotedPost.bookmarkedByMe").value(true));
+        String bookmarks = mvc.perform(auth(get("/api/bookmarks"), bob)).andReturn().getResponse().getContentAsString();
+        org.assertj.core.api.Assertions.assertThat((List<Boolean>) JsonPath.read(bookmarks, "$.items[*].bookmarkedByMe"))
+                .hasSize(2).containsOnly(true);
+
+        // Removing the bookmark flips the flag everywhere; a new post's own response never claims one.
+        mvc.perform(auth(delete("/api/posts/" + p1 + "/bookmark"), bob)).andExpect(status().isNoContent());
+        mvc.perform(auth(get("/api/posts/" + p1), bob)).andExpect(jsonPath("$.bookmarkedByMe").value(false));
+        mvc.perform(json(auth(post("/api/posts"), bob), "{\"content\":\"fresh\"}")).andExpect(jsonPath("$.bookmarkedByMe").value(false));
+    }
+
+    @Test
     void whoToFollowRanksFriendsOfFriendsAndExcludesWhoYouShouldNotSee() throws Exception {
         Account alice = register();
         Account bob = register();

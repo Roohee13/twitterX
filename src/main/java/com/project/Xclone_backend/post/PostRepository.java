@@ -93,8 +93,8 @@ public interface PostRepository extends JpaRepository<Post, Long> {
 
     /**
      * Home timeline: top-level posts and reposts by the user and everyone they follow, newest first, minus muted accounts (their posts, their reposts, and reposts of their posts). Each row is
-     * {@code [Post, likedByUser (Boolean), repostedByUser (Boolean)]}, the two flags being about the post actually shown
-     * (the original, for a repost row). Computing them here saves the two extra round trips the mapper would make.
+     * {@code [Post, likedByUser, repostedByUser, bookmarkedByUser]} (Booleans), the flags being about the post actually shown
+     * (the original, for a repost row). Computing them here saves the extra round trips the mapper would make.
      */
     @Query("""
             select p,
@@ -104,6 +104,9 @@ public interface PostRepository extends JpaRepository<Post, Long> {
                    case when exists (select 1 from Post r
                                      where r.author.id = :viewerId and r.deleted = false
                                        and r.repostOf.id = coalesce(o.id, p.id))
+                        then true else false end,
+                   case when exists (select 1 from Bookmark bm
+                                     where bm.user.id = :viewerId and bm.post.id = coalesce(o.id, p.id))
                         then true else false end
             from Post p join fetch p.author left join fetch p.repostOf o left join fetch o.author
             where (p.author.id = :viewerId
