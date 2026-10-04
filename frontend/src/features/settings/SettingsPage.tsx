@@ -1,5 +1,6 @@
 import { PageHeader } from '../shell/PageHeader'
 import { EmailForm, PasswordForm, UsernameForm } from './AccountForms'
+import { AdminEmailTool } from './AdminEmailTool'
 import { AppearanceSection } from './AppearanceSection'
 import { DangerZone } from './DangerZone'
 import { PrivacySection } from './PrivacySection'
@@ -17,6 +18,7 @@ export function SettingsPage() {
       <PrivacySection />
       <RelationList kind="block" />
       <RelationList kind="mute" />
+      <AdminEmailTool />
       <DangerZone />
     </>
   )

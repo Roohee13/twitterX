@@ -92,6 +92,10 @@ test.describe('signed in', () => {
     await adminPage.getByRole('tab', { name: 'Posts' }).click()
     await expect(adminPage.getByRole('article').first()).toBeVisible()
     await expectAccessible(adminPage, 'admin reports (posts)')
+    await adminPage.goto('/settings')
+    await expect(adminPage.getByRole('region', { name: 'Email delivery' })).toBeVisible()
+    await ready(adminPage)
+    await expectAccessible(adminPage, 'settings with the admin email tool')
   })
 
   test('dialogs and menus', async ({ page, request }) => {

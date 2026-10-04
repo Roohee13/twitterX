@@ -224,37 +224,61 @@ Suspension is not deactivation: deactivating is the user's own choice and signin
 ## Email
 
 Registering and changing your email send a verification link (`emailVerified` in the user response; accounts that
-existed before this feature count as verified), and "forgot password" sends a reset link. Nothing is blocked for unverified users yet.
-Links point to `FRONTEND_URL/verify-email?token=…` and `FRONTEND_URL/reset-password?token=…` (`FRONTEND_URL` defaults to
-`http://localhost:5173`; set it if the frontend runs elsewhere). Sender: `MAIL_FROM`.
+existed before this feature count as verified), and "forgot password" sends a reset link. Moderation notices (post removed, account suspended ...) are emailed too.
+Nothing is blocked for unverified users yet. Links point to `FRONTEND_URL/verify-email?token=…` and `FRONTEND_URL/reset-password?token=…`
+(`FRONTEND_URL` defaults to `http://localhost:5173`; set it if the frontend runs elsewhere). Sender: `MAIL_FROM`.
 
-Email is optional: without `SPRING_MAIL_HOST` the app logs each message, link included, instead of sending it
-(look for `Email not sent (no SMTP configured)` in the console). A failed send is logged and never breaks the request.
+How sending behaves: an email is queued once the database transaction has **committed** and is delivered on a background thread, so a slow or
+broken mail server never delays or fails a request (registration still works; the failure is logged as `Could not send email to …`). SMTP connections
+give up after 5 seconds (`MAIL_TIMEOUT_MS`).
 
-**Development: Mailpit** (free, local, no account). It is a fake mail server with a web inbox; nothing leaves your computer.
+**Without `SPRING_MAIL_HOST`** the app does not send anything: it logs each message, link included (look for `Email not sent (no SMTP configured)` in the console).
+That is what the automated tests and CI use (the browser tests read the links from that log), and it is also an easy way to try the app with no mail account at all.
 
-```bash
-docker compose up -d mailpit      # SMTP on :1025, inbox at http://localhost:8025
-```
+### Sending real email with Gmail (App Password)
 
-Run the backend with `SPRING_MAIL_HOST=localhost` and `SPRING_MAIL_PORT=1025` (in IntelliJ: Run > Edit Configurations > Environment variables;
-remove any `SPRING_MAIL_USERNAME`, `SPRING_MAIL_PASSWORD` and `SPRING_MAIL_PROPERTIES_*` left over from another provider, because Mailpit has no login).
-Then register on the site and open the email at http://localhost:8025.
+Good for development and a small test. A personal Gmail account allows roughly 500 messages a day, and Google may block logins from some hosting
+providers, so use a transactional email service for production (see below).
 
-**Production: a transactional email service** (Brevo, Resend, Amazon SES, Mailgun, Postmark; several have free tiers). No code change, only
-environment variables set in your hosting platform (never committed):
+1. Turn on **2-Step Verification** for the Google account: https://myaccount.google.com/security
+2. Create an **App Password**: https://myaccount.google.com/apppasswords (name it e.g. "XClone"). Google shows a 16-character password once. Your normal Google
+   password does **not** work here (that is the `535 Username and Password not accepted` error).
+3. Give the backend these environment variables. In IntelliJ: Run > Edit Configurations > your Spring Boot configuration > Environment variables.
+   On a host: its environment or secrets settings. **Never write them into a file in the repository.**
+
+   ```
+   SPRING_MAIL_HOST=smtp.gmail.com
+   SPRING_MAIL_PORT=587
+   SPRING_MAIL_USERNAME=your.address@gmail.com
+   SPRING_MAIL_PASSWORD=<the 16-character App Password, spaces removed>
+   MAIL_FROM=your.address@gmail.com
+   ```
+
+   Port 587 with STARTTLS and a login are already the defaults. `MAIL_FROM` should be the same Gmail address (Gmail rewrites any other sender to it).
+4. Restart the backend, sign in as an admin, open **Settings > Email delivery** and press **Send test email**. It sends one message to your own address and shows
+   the mail server's real answer if something is wrong. Then register a new account and check that the verification email arrives.
+
+| What you see | Usually means |
+|---|---|
+| `535 Username and Password not accepted` | the normal Google password was used, or the App Password was copied wrongly (remove the spaces); or 2-Step Verification is off |
+| `534 Application-specific password required` | same: create an App Password |
+| `Email is not configured` | `SPRING_MAIL_HOST` is not set in the process that is running (restart it after changing the environment) |
+| a timeout or `Could not connect` | port 587 blocked by the network or a firewall; try another network |
+| "Sent" but nothing in the inbox | look in Spam; Gmail may also hold the first messages a new app sends |
+
+### Production
+
+Use a transactional email service (Brevo, Resend, Amazon SES, Mailgun, Postmark; several have free tiers). **No code change**: only these variables, set in the hosting
+platform, with that provider's SMTP host and credentials:
 
 ```
 SPRING_MAIL_HOST=<the provider's SMTP host>
 SPRING_MAIL_PORT=587
 SPRING_MAIL_USERNAME=<provider login>
 SPRING_MAIL_PASSWORD=<provider SMTP key>
-SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH=true
-SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE=true
 MAIL_FROM=noreply@yourdomain.com
 FRONTEND_URL=https://your-site.example
 ```
 
-To reach arbitrary recipients (and stay out of spam) verify your sending domain with the provider (a few DNS records). A personal Gmail account
-works for a quick test with an App Password but is not suitable for production (daily limits, blocked logins). Mail is deliberately not part of
+To reach any recipient and stay out of spam, verify your sending domain with the provider (a few DNS records: SPF and DKIM). Mail is deliberately not part of
 `/actuator/health`, so a mail outage never makes the app report DOWN.

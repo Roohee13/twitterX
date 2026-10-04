@@ -28,10 +28,9 @@ safe to run again) and sign in as `demo_ava` to see a timeline with hashtags, me
 API_BASE=http://localhost:8080 npm run seed
 ```
 
-Emails (verification, password reset): the easy way is the local Mailpit inbox. Run `docker compose up -d mailpit` from the repository root,
-start the backend with `SPRING_MAIL_HOST=localhost` and `SPRING_MAIL_PORT=1025`, and read the emails at http://localhost:8025 (see the
-Email section of the main README). Without any mail setting the backend only logs the link: look for `Email not sent (no SMTP configured)`
-in its console.
+Emails (verification, password reset): without any mail setting the backend only logs the link; look for `Email not sent (no SMTP configured)` in its console.
+To send real email set up Gmail with an App Password as described in the Email section of the main README, then check it with an admin account under
+Settings > Email delivery > Send test email.
 
 ## Checks
 

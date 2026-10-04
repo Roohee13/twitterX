@@ -28,7 +28,7 @@ environment variables; `.env.example` lists them all. The ones that must be righ
 | `CORS_ALLOWED_ORIGINS` | the frontend origin(s), exactly, comma separated: `https://app.example.com`. **Also applies to the WebSocket handshake**, so a missing origin breaks live updates, not only REST |
 | `FRONTEND_URL` | `https://app.example.com`. Verify-email and reset-password links point here |
 | `R2_*` | account id, keys, bucket, and `R2_PUBLIC_BASE_URL` (the public address images are served from) |
-| `SPRING_MAIL_HOST`, `_PORT`, `_USERNAME`, `_PASSWORD`, `MAIL_FROM` | a real SMTP provider (see README, *Email*). Without it emails are only logged, so nobody can verify their address or reset a password |
+| `SPRING_MAIL_HOST`, `_PORT`, `_USERNAME`, `_PASSWORD`, `MAIL_FROM` | a transactional email provider's SMTP settings (README, *Email*, *Production*); a personal Gmail account is for development only. Without it emails are only logged, so nobody can verify their address or reset a password. After deploying, use **Settings > Email delivery > Send test email** as an admin to confirm it works |
 | `FORWARD_HEADERS_STRATEGY` | `framework` when the app sits behind a proxy or load balancer, so rate limits see the real client address |
 | `RATE_LIMIT_ENABLED` | `true` (the default) |
 

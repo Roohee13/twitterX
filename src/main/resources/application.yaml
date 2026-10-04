@@ -9,6 +9,15 @@ spring:
     hikari:
       maximum-pool-size: ${DB_POOL_SIZE:10}
       minimum-idle: ${DB_POOL_MIN_IDLE:2}
+  mail:
+    # Only used when SPRING_MAIL_HOST is set (see README, Email). Gmail needs just host, port, username and password: port 587 with STARTTLS
+    # and a login are the defaults here. The timeouts matter: without them a mail server that stops answering would leave a request waiting for ever.
+    properties:
+      mail.smtp.auth: ${MAIL_SMTP_AUTH:true}
+      mail.smtp.starttls.enable: ${MAIL_SMTP_STARTTLS:true}
+      mail.smtp.connectiontimeout: ${MAIL_TIMEOUT_MS:5000}
+      mail.smtp.timeout: ${MAIL_TIMEOUT_MS:5000}
+      mail.smtp.writetimeout: ${MAIL_TIMEOUT_MS:5000}
   data:
     redis:
       # Upstash/managed Redis: rediss://default:<password>@<host>:6379 (TLS). Connects lazily, so the app still

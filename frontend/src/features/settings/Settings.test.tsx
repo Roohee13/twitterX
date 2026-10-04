@@ -319,3 +319,68 @@ describe('deactivating and deleting', () => {
     await waitFor(() => expect(state.loggedOut).toBe(1))
   })
 })
+
+describe('email delivery check (admins)', () => {
+  const openAs = (admin: boolean) => {
+    const fake = serve()
+    renderSignedIn(<SettingsPage />, { route: '/settings', user: { admin } })
+    return fake
+  }
+
+  it('is not offered to anyone else', async () => {
+    openAs(false)
+    await screen.findByRole('form', { name: 'Username' })
+    expect(screen.queryByRole('region', { name: 'Email delivery' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Send test email' })).not.toBeInTheDocument()
+  })
+
+  it('sends one test email to your own address and says the mail server accepted it', async () => {
+    const { state, record } = openAs(true)
+    server.use(http.post(`${BASE}/api/admin/email/test`, async ({ request }) => {
+      await record(request)
+      return new HttpResponse(null, { status: 204 })
+    }))
+    const section = await screen.findByRole('region', { name: 'Email delivery' })
+    expect(section).toHaveTextContent('alice@example.com')
+
+    await userEvent.click(within(section).getByRole('button', { name: 'Send test email' }))
+
+    expect(await within(section).findByText(/Sent to alice@example.com: the mail server accepted it/)).toBeInTheDocument()
+    expect(state.calls).toEqual([{ method: 'POST', path: '/api/admin/email/test', body: undefined }])
+  })
+
+  it('shows the mail server\'s own reason when it refuses, and nothing like "sent"', async () => {
+    openAs(true)
+    server.use(http.post(`${BASE}/api/admin/email/test`, () => problem(502, 'The mail server did not accept the message: 535-5.7.8 Username and Password not accepted.')))
+    const section = await screen.findByRole('region', { name: 'Email delivery' })
+
+    await userEvent.click(within(section).getByRole('button', { name: 'Send test email' }))
+
+    expect(await within(section).findByRole('alert')).toHaveTextContent('535-5.7.8 Username and Password not accepted')
+    expect(within(section).queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('tells you when email is not configured at all', async () => {
+    openAs(true)
+    server.use(http.post(`${BASE}/api/admin/email/test`, () => problem(409, 'Email is not configured: set SPRING_MAIL_HOST (and the port, username and password) and restart the backend.')))
+    const section = await screen.findByRole('region', { name: 'Email delivery' })
+
+    await userEvent.click(within(section).getByRole('button', { name: 'Send test email' }))
+
+    expect(await within(section).findByRole('alert')).toHaveTextContent('Email is not configured: set SPRING_MAIL_HOST')
+  })
+
+  it('a second try clears the previous result first', async () => {
+    openAs(true)
+    let calls = 0
+    server.use(http.post(`${BASE}/api/admin/email/test`, () => (++calls === 1 ? problem(502, 'First failure') : new HttpResponse(null, { status: 204 }))))
+    const section = await screen.findByRole('region', { name: 'Email delivery' })
+
+    await userEvent.click(within(section).getByRole('button', { name: 'Send test email' }))
+    expect(await within(section).findByText('First failure')).toBeInTheDocument()
+    await userEvent.click(within(section).getByRole('button', { name: 'Send test email' }))
+
+    expect(await within(section).findByRole('status')).toBeInTheDocument()
+    expect(within(section).queryByText('First failure')).not.toBeInTheDocument()
+  })
+})

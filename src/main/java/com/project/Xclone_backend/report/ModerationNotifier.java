@@ -1,10 +1,6 @@
 package com.project.Xclone_backend.report;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.project.Xclone_backend.auth.EmailSender;
 import com.project.Xclone_backend.notification.NotificationService;
@@ -20,13 +16,11 @@ import lombok.RequiredArgsConstructor;
  * Tells people about moderation: admins when a report arrives, a post's author when it is removed, reporters what became
  * of their report, and a user when their account is suspended or removed. Each message is an in-app notification (no actor,
  * so the admin's identity is never shown) plus an email, because a suspended or removed user cannot read the app.
- * Emails go out only after the surrounding transaction commits; they never fail the moderation action.
+ * Emails wait for the surrounding transaction to commit (EmailSender does that) and never fail the moderation action.
  */
 @Component
 @RequiredArgsConstructor
 public class ModerationNotifier {
-
-    private static final Logger log = LoggerFactory.getLogger(ModerationNotifier.class);
 
     private final NotificationService notificationService;
     private final UserRepository userRepository;
@@ -71,36 +65,15 @@ public class ModerationNotifier {
 
     /** Takes the address as a string because the account is anonymized in the same transaction. */
     public void accountRemoved(String email, String note) {
-        afterCommit(() -> emailSender.send(email, "Your account was removed",
-                "An admin removed your account for breaking the rules. This cannot be undone." + noteText(note)));
+        emailSender.send(email, "Your account was removed",
+                "An admin removed your account for breaking the rules. This cannot be undone." + noteText(note));
     }
 
     private void email(User user, String subject, String body) {
-        String address = user.getEmail();
-        afterCommit(() -> emailSender.send(address, subject, body));
+        emailSender.send(user.getEmail(), subject, body);
     }
 
     private static String noteText(String note) {
         return note == null || note.isBlank() ? "" : " Reason: " + note.strip();
-    }
-
-    private void afterCommit(Runnable action) {
-        Runnable safe = () -> {
-            try {
-                action.run();
-            } catch (RuntimeException e) {
-                log.error("Moderation email failed: {}", e.getMessage());
-            }
-        };
-        if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    safe.run();
-                }
-            });
-        } else {
-            safe.run();
-        }
     }
 }

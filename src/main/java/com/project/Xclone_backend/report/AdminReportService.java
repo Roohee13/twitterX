@@ -37,6 +37,7 @@ import lombok.RequiredArgsConstructor;
 public class AdminReportService {
 
     private final UserRepository userRepository;
+    private final AdminGuard adminGuard;
     private final UserReportRepository userReportRepository;
     private final PostReportRepository postReportRepository;
     private final PostRepository postRepository;
@@ -47,10 +48,7 @@ public class AdminReportService {
     private final R2Properties r2;
 
     private void requireAdmin(Long userId) {
-        boolean admin = userRepository.findById(userId).map(User::isAdmin).orElse(false);
-        if (!admin) {
-            throw ApiException.forbidden("Admins only");
-        }
+        adminGuard.requireAdmin(userId);
     }
 
     @Transactional(readOnly = true)

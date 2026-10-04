@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
-import { as, createUser, shot, signIn, uniqueName, type TestUser } from './support'
+import { as, createUser, setAdmin, shot, signIn, uniqueName, type TestUser } from './support'
 
 const form = (page: Page, name: string) => page.getByRole('form', { name })
 const loginStatus = async (request: APIRequestContext, usernameOrEmail: string, password: string) =>
@@ -158,6 +158,25 @@ test.describe('account settings', () => {
     await expect(page).toHaveURL(/\/login/)
     expect(await loginStatus(request, user.username, user.password)).toBe(401)
     expect((await request.get(`/api/users/${user.username}`, { headers: { Authorization: `Bearer ${visitor.accessToken}` } })).status()).toBe(404)
+  })
+})
+
+test.describe('email delivery check', () => {
+  test('only admins see it; with no mail server configured it says so (the e2e backend has none)', async ({ page, request, browser }) => {
+    const normal = await createUser(request)
+    await signIn(page, normal, '/settings')
+    await expect(form(page, 'Password')).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Email delivery' })).toHaveCount(0)
+
+    const admin = await createUser(request, { displayName: 'Ada Mailer' })
+    await setAdmin(admin.username)
+    const adminPage = await (await browser.newContext()).newPage()
+    await signIn(adminPage, admin, '/settings')
+    const section = adminPage.getByRole('region', { name: 'Email delivery' })
+    await expect(section).toContainText(admin.email)
+    await section.getByRole('button', { name: 'Send test email' }).click()
+    await expect(section.getByRole('alert')).toContainText('Email is not configured: set SPRING_MAIL_HOST')
+    await adminPage.screenshot(shot('settings-email-test'))
   })
 })
 

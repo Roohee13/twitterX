@@ -9,16 +9,3 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
-
-  # Development mail inbox: the backend sends here instead of to real addresses, and every email (verification links,
-  # password resets) is readable at http://localhost:8025. Free, local, no account. Not used in production.
-  mailpit:
-    image: axllent/mailpit
-    ports:
-      - "1025:1025" # SMTP: set SPRING_MAIL_HOST=localhost and SPRING_MAIL_PORT=1025
-      - "8025:8025" # web inbox
-    healthcheck:
-      test: ["CMD", "/mailpit", "readyz"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
