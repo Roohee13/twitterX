@@ -79,6 +79,8 @@ export function as(request: APIRequestContext, user: Pick<TestUser, 'accessToken
     bookmark: (postId: number) => run('post', `/api/posts/${postId}/bookmark`),
     setPolicy: (postId: number, replyPolicy: string) => run('patch', `/api/posts/${postId}/reply-policy`, { replyPolicy }),
     setProtected: () => run('patch', '/api/users/me', { protectedAccount: true }),
+    reportPost: (postId: number, reason = 'SPAM') => run('post', `/api/posts/${postId}/report`, { reason }),
+    reportUser: (username: string, reason = 'SPAM') => run('post', `/api/users/${username}/report`, { reason }),
     updateProfile: (data: Record<string, unknown>) => run('patch', '/api/users/me', data),
     requestFollow: (username: string) => run('post', `/api/users/${username}/follow`),
     approve: (username: string) => run('post', `/api/users/me/follow-requests/${username}/approve`),
@@ -94,4 +96,21 @@ export async function loginViaApi(request: APIRequestContext, user: TestUser): P
   if (!res.ok()) throw new Error(`login failed: ${res.status()} ${await res.text()}`)
   const data = await res.json()
   return { ...user, accessToken: data.accessToken, refreshToken: data.refreshToken }
+}
+
+/**
+ * Admins are made in the database (there is no way to become one through the app), so tests do the same with one SQL update on the
+ * e2e database. Needs `psql`; the connection defaults match scripts/e2e-backend.sh and can be overridden with PGHOST / PGUSER / PGPASSWORD / E2E_DB.
+ */
+export async function setAdmin(username: string, admin = true) {
+  if (!/^\w+$/.test(username)) throw new Error(`unexpected username: ${username}`)
+  const { execFile } = await import('node:child_process')
+  await new Promise<void>((resolve, reject) => {
+    execFile(
+      'psql',
+      ['-U', process.env.PGUSER ?? 'postgres', '-h', process.env.PGHOST ?? 'localhost', '-d', process.env.E2E_DB ?? 'xclone_e2e', '-qc', `update users set is_admin = ${admin} where username = '${username}'`],
+      { env: { ...process.env, PGPASSWORD: process.env.PGPASSWORD ?? 'postgres' } },
+      (error, _stdout, stderr) => (error ? reject(new Error(`could not update is_admin with psql: ${stderr || error.message}`)) : resolve()),
+    )
+  })
 }

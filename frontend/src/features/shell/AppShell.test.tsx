@@ -22,7 +22,7 @@ function Where() {
   return <p data-testid="where">{location.pathname + location.search}</p>
 }
 
-function open(route = '/') {
+function open(route = '/', user: { admin?: boolean } = {}) {
   server.use(
     http.get(`${BASE}/api/trending/hashtags`, () => HttpResponse.json([{ name: 'java', postCount: 2, userCount: 2 }])),
     http.get(`${BASE}/api/users/suggestions`, () => HttpResponse.json([{ user: makeUser({ id: 5, username: 'sue_s', displayName: 'Sue S' }), mutualFollowCount: 1 }])),
@@ -32,7 +32,7 @@ function open(route = '/') {
       <Routes><Route element={<AppShell />}><Route path="/" element={<p>home</p>} /><Route path="/explore" element={<p>explore page</p>} /></Route></Routes>
       <Where />
     </>,
-    { route },
+    { route, user },
   )
 }
 
@@ -43,6 +43,18 @@ describe('the app shell', () => {
     expect(within(nav).getAllByRole('link').map((l) => l.getAttribute('aria-label'))).toEqual(['Home', 'Explore', 'Bookmarks', 'Profile'])
     expect(within(nav).getByRole('link', { name: 'Explore' })).toHaveAttribute('href', '/explore')
     expect(within(nav).getByRole('link', { name: 'Bookmarks' })).toHaveAttribute('href', '/bookmarks')
+  })
+
+  it('shows the Reports link to admins only', async () => {
+    open('/', { admin: true })
+    const nav = await screen.findByRole('navigation', { name: 'Main' })
+    expect(within(nav).getByRole('link', { name: 'Reports' })).toHaveAttribute('href', '/admin/reports')
+  })
+
+  it('does not show the Reports link to everyone else', async () => {
+    open()
+    await screen.findByRole('navigation', { name: 'Main' })
+    expect(screen.queryByRole('link', { name: 'Reports' })).not.toBeInTheDocument()
   })
 
   it('shows trends and who to follow in the right column, each with "Show more"', async () => {

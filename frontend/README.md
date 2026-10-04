@@ -47,6 +47,8 @@ npm run e2e                # terminal 2: starts Vite itself; screenshots land in
 ```
 
 The e2e specs read verification and reset links from `e2e/backend.log`, so the backend must be the one started by that script.
+The admin specs make a test user an admin with one `psql` update on `xclone_e2e` (see `setAdmin` in `e2e/support.ts`), so `psql` must be installed;
+connection settings default to the ones the script uses and can be overridden with `PGHOST`, `PGUSER`, `PGPASSWORD`, `E2E_DB`.
 
 ## Layout
 
@@ -56,7 +58,7 @@ src/components/ui Avatar, Button, Modal, Toast, Spinner, InfiniteList, empty/err
 src/features/     auth (context, guards, login, register, verify-email, password reset), shell (layout, nav, trends panel),
                   posts (card, actions, menu and dialogs, post page), compose (composer, image upload, dialog), home (timeline);
                   profile (profile page and tabs, follow/mute/block, edit profile, follower lists, follow requests),
-                  explore (search, trending, hashtag page, who to follow), bookmarks; more are added per step
+                  explore (search, trending, hashtag page, who to follow), bookmarks, admin (report review, remove post, suspend or remove account); more are added per step
 e2e/              Playwright specs and helpers
 ```
 

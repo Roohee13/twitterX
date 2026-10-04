@@ -2,7 +2,9 @@ import { useState } from 'react'
 import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'
 
-export type ReportReason = 'SPAM' | 'HARASSMENT' | 'HATE_SPEECH' | 'VIOLENCE' | 'SEXUAL_CONTENT' | 'MISINFORMATION' | 'OTHER'
+import type { ReportReason } from '../../lib/types'
+
+export type { ReportReason }
 
 const reasons: Array<{ value: ReportReason; label: string }> = [
   { value: 'SPAM', label: "It's spam" },

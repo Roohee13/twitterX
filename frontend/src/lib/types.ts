@@ -28,6 +28,8 @@ export interface UserResponse {
   bannerUrl: string | null
   createdAt: string
   protectedAccount: boolean
+  /** Can open the admin pages (report review). Granted in the database, never through the app. */
+  admin: boolean
 }
 
 export interface ProfileResponse {
@@ -76,14 +78,16 @@ export interface PostResponse {
   bookmarkedByMe: boolean
 }
 
-export type NotificationType = 'FOLLOW' | 'LIKE' | 'REPLY' | 'MENTION' | 'REPOST' | 'FOLLOW_REQUEST'
+export type NotificationType = 'FOLLOW' | 'LIKE' | 'REPLY' | 'MENTION' | 'REPOST' | 'FOLLOW_REQUEST' | 'REPORT_RECEIVED' | 'POST_REMOVED' | 'REPORT_OUTCOME'
 
 export interface NotificationResponse {
   id: number
   type: NotificationType
-  actor: UserSummary
+  /** Null for system notifications (moderation), which carry their text in `detail` instead. */
+  actor: UserSummary | null
   postId: number | null
   postContent: string | null
+  detail: string | null
   read: boolean
   createdAt: string
 }
@@ -128,4 +132,43 @@ export interface Problem {
   status?: number
   detail?: string
   errors?: Record<string, string>
+}
+
+// --- Admin: report review ---
+
+export type ReportReason = 'SPAM' | 'HARASSMENT' | 'HATE_SPEECH' | 'VIOLENCE' | 'SEXUAL_CONTENT' | 'MISINFORMATION' | 'OTHER'
+export type ReportStatus = 'OPEN' | 'DISMISSED' | 'RESOLVED'
+
+interface AdminReportBase {
+  id: number
+  reporter: UserSummary
+  reason: ReportReason
+  status: ReportStatus
+  createdAt: string
+  handledBy: UserSummary | null
+  handledAt: string | null
+  /** What the admin told the people affected, if anything. */
+  adminNote: string | null
+  /** How many reports (any status) the same account or post has received. */
+  totalReports: number
+}
+
+export type AccountStatus = 'ACTIVE' | 'DEACTIVATED' | 'DELETED' | 'SUSPENDED'
+
+export interface AdminUserReport extends AdminReportBase {
+  reportedUser: UserSummary
+  reportedUserStatus: AccountStatus
+}
+
+export interface AdminPostView {
+  id: number
+  author: UserSummary
+  content: string
+  mediaUrls: string[]
+  createdAt: string
+  removed: boolean
+}
+
+export interface AdminPostReport extends AdminReportBase {
+  post: AdminPostView
 }

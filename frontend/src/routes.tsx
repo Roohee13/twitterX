@@ -5,6 +5,7 @@ import { LoginPage } from './features/auth/LoginPage'
 import { RegisterPage } from './features/auth/RegisterPage'
 import { ResetPasswordPage } from './features/auth/ResetPasswordPage'
 import { VerifyEmailPage } from './features/auth/VerifyEmailPage'
+import { AdminReportsPage } from './features/admin/AdminReportsPage'
 import { BookmarksPage } from './features/bookmarks/BookmarksPage'
 import { ExplorePage } from './features/explore/ExplorePage'
 import { HashtagPage } from './features/explore/HashtagPage'
@@ -32,6 +33,7 @@ export const router = createBrowserRouter([
           { path: '/explore', element: <ExplorePage /> },
           { path: '/hashtag/:name', element: <HashtagPage /> },
           { path: '/bookmarks', element: <BookmarksPage /> },
+          { path: '/admin/reports', element: <AdminReportsPage /> },
         ],
       },
     ],

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Bookmark, Feather, Home, LogOut, Search, User, UserCheck } from 'lucide-react'
+import { Bookmark, Feather, Home, LogOut, Search, ShieldAlert, User, UserCheck } from 'lucide-react'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { Link, NavLink, Outlet, useMatch, useNavigate } from 'react-router'
 import { Avatar } from '../../components/ui/Avatar'
@@ -26,6 +26,8 @@ function useNavItems(): NavItem[] {
     { to: `/u/${user.username}`, label: 'Profile', icon: <User size={26} /> },
     // Only protected accounts have follow requests to answer.
     ...(user.protectedAccount ? [{ to: '/follow-requests', label: 'Follow requests', icon: <UserCheck size={26} /> }] : []),
+    // Report review is for admins only.
+    ...(user.admin ? [{ to: '/admin/reports', label: 'Reports', icon: <ShieldAlert size={26} /> }] : []),
   ]
 }
 

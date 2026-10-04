@@ -22,6 +22,7 @@ export const me = {
   bannerUrl: null,
   createdAt: '2026-01-01T00:00:00Z',
   protectedAccount: false,
+  admin: false,
 }
 
 export function authResponse(overrides: Partial<typeof me> = {}) {
