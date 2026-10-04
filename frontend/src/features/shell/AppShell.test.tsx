@@ -39,10 +39,10 @@ function open(route = '/', user: { admin?: boolean } = {}, unread = 0, unreadMes
 }
 
 describe('the app shell', () => {
-  it('has Home, Explore, Notifications, Messages, Bookmarks and Profile in the navigation', async () => {
+  it('has Home, Explore, Notifications, Messages, Bookmarks, Profile and Settings in the navigation', async () => {
     open()
     const nav = await screen.findByRole('navigation', { name: 'Main' })
-    expect(within(nav).getAllByRole('link').map((l) => l.getAttribute('aria-label'))).toEqual(['Home', 'Explore', 'Notifications', 'Messages', 'Bookmarks', 'Profile'])
+    expect(within(nav).getAllByRole('link').map((l) => l.getAttribute('aria-label'))).toEqual(['Home', 'Explore', 'Notifications', 'Messages', 'Bookmarks', 'Profile', 'Settings'])
     expect(within(nav).getByRole('link', { name: 'Explore' })).toHaveAttribute('href', '/explore')
     expect(within(nav).getByRole('link', { name: 'Bookmarks' })).toHaveAttribute('href', '/bookmarks')
   })
@@ -71,6 +71,12 @@ describe('the app shell', () => {
     open('/', {}, 250)
     const main = await screen.findByRole('navigation', { name: 'Main' })
     expect(await within(main).findByRole('link', { name: 'Notifications (250 unread)' })).toHaveTextContent('99+')
+  })
+
+  it('keeps Settings out of the phone bar, which has no room for it', async () => {
+    open()
+    const mobile = await screen.findByRole('navigation', { name: 'Main (mobile)' })
+    expect(within(mobile).getAllByRole('link').map((l) => l.getAttribute('aria-label'))).toEqual(['Home', 'Explore', 'Notifications', 'Messages', 'Bookmarks', 'Profile'])
   })
 
   it('shows the Reports link to admins only', async () => {

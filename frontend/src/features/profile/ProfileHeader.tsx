@@ -1,4 +1,4 @@
-import { CalendarDays, Lock, Mail } from 'lucide-react'
+import { CalendarDays, Lock, Mail, Settings } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { Avatar } from '../../components/ui/Avatar'
@@ -30,7 +30,10 @@ export function ProfileHeader({ profile, onEdit }: { profile: ProfileResponse; o
           <Avatar src={profile.avatarUrl} name={profile.displayName} size="xl" className="-mt-14 border-4 border-black" />
           <div className="flex items-center gap-2 pt-3">
             {own ? (
-              <Button variant="secondary" onClick={onEdit}>Edit profile</Button>
+              <>
+                <Link to="/settings" aria-label="Settings" title="Settings" className="rounded-full border border-zinc-600 p-2 hover:bg-zinc-900"><Settings size={20} /></Link>
+                <Button variant="secondary" onClick={onEdit}>Edit profile</Button>
+              </>
             ) : (
               <>
                 <ProfileMenu profile={profile} />

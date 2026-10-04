@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Bell, Bookmark, Feather, Home, LogOut, Mail, Search, ShieldAlert, User, UserCheck } from 'lucide-react'
+import { Bell, Bookmark, Feather, Home, LogOut, Mail, Search, Settings, ShieldAlert, User, UserCheck } from 'lucide-react'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { Link, NavLink, Outlet, useMatch, useNavigate } from 'react-router'
 import { Avatar } from '../../components/ui/Avatar'
@@ -19,6 +19,8 @@ interface NavItem {
   icon: ReactNode
   /** Unread count shown on the icon. */
   badge?: number
+  /** Left out of the phone's bottom bar, which has no room (it is reachable from the profile page there). */
+  desktopOnly?: boolean
 }
 
 // Entries are added here as their pages are built.
@@ -37,6 +39,7 @@ function useNavItems(): NavItem[] {
     ...(user.protectedAccount ? [{ to: '/follow-requests', label: 'Follow requests', icon: <UserCheck size={26} /> }] : []),
     // Report review is for admins only.
     ...(user.admin ? [{ to: '/admin/reports', label: 'Reports', icon: <ShieldAlert size={26} /> }] : []),
+    { to: '/settings', label: 'Settings', icon: <Settings size={26} />, desktopOnly: true },
   ]
 }
 
@@ -44,7 +47,7 @@ function NavItems({ vertical }: { vertical: boolean }) {
   const navItems = useNavItems()
   return (
     <>
-      {navItems.map((item) => (
+      {navItems.filter((item) => vertical || !item.desktopOnly).map((item) => (
         <NavLink
           key={item.to}
           to={item.to}
