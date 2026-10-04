@@ -1,4 +1,4 @@
-import type { PostResponse, UserSummary } from '../lib/types'
+import type { PostResponse, ProfileResponse, UserSummary } from '../lib/types'
 
 export function makeUser(overrides: Partial<UserSummary> = {}): UserSummary {
   return { id: 10, username: 'bob', displayName: 'Bob Builder', avatarUrl: null, protectedAccount: false, ...overrides }
@@ -27,6 +27,26 @@ export function makePost(overrides: Partial<PostResponse> = {}): PostResponse {
     replyPolicy: 'EVERYONE',
     canReply: true,
     bookmarkedByMe: false,
+    ...overrides,
+  }
+}
+
+export function makeProfile(overrides: Partial<ProfileResponse> = {}): ProfileResponse {
+  return {
+    id: 10,
+    username: 'bob',
+    displayName: 'Bob Builder',
+    bio: null,
+    avatarUrl: null,
+    bannerUrl: null,
+    createdAt: '2026-03-04T10:30:00Z',
+    followerCount: 5,
+    followingCount: 7,
+    followedByMe: false,
+    blockedByMe: false,
+    mutedByMe: false,
+    protectedAccount: false,
+    followRequestedByMe: false,
     ...overrides,
   }
 }

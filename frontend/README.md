@@ -55,7 +55,7 @@ src/lib/          API client (single-flight token refresh, 429 handling), token 
 src/components/ui Avatar, Button, Modal, Toast, Spinner, InfiniteList, empty/error states
 src/features/     auth (context, guards, login, register, verify-email, password reset), shell (layout, nav, trends panel),
                   posts (card, actions, menu and dialogs, post page), compose (composer, image upload, dialog), home (timeline);
-                  more are added per step
+                  profile (profile page and tabs, follow/mute/block, edit profile, follower lists, follow requests); more are added per step
 e2e/              Playwright specs and helpers
 ```
 

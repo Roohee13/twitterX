@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Feather, Home, LogOut } from 'lucide-react'
+import { Feather, Home, LogOut, User, UserCheck } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link, NavLink, Outlet, useMatch } from 'react-router'
 import { Avatar } from '../../components/ui/Avatar'
@@ -16,9 +16,18 @@ interface NavItem {
 }
 
 // Entries are added here as their pages are built.
-const navItems: NavItem[] = [{ to: '/', label: 'Home', icon: <Home size={26} /> }]
+function useNavItems(): NavItem[] {
+  const user = useCurrentUser()
+  return [
+    { to: '/', label: 'Home', icon: <Home size={26} /> },
+    { to: `/u/${user.username}`, label: 'Profile', icon: <User size={26} /> },
+    // Only protected accounts have follow requests to answer.
+    ...(user.protectedAccount ? [{ to: '/follow-requests', label: 'Follow requests', icon: <UserCheck size={26} /> }] : []),
+  ]
+}
 
 function NavItems({ vertical }: { vertical: boolean }) {
+  const navItems = useNavItems()
   return (
     <>
       {navItems.map((item) => (

@@ -55,7 +55,8 @@ export function PostCard({ post }: { post: PostResponse }) {
         </p>
       )}
       <div className="flex gap-3">
-        <Avatar src={post.author.avatarUrl} name={post.author.displayName} />
+        {/* The name next to it is the accessible link to the same place, so this one stays out of the tab order. */}
+        <Link to={`/u/${post.author.username}`} tabIndex={-1} aria-hidden="true" className="h-fit shrink-0"><Avatar src={post.author.avatarUrl} name={post.author.displayName} /></Link>
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <PostHeader author={post.author} createdAt={post.createdAt} postId={post.id} />

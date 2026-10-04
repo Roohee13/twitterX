@@ -4,8 +4,7 @@ import { useToast } from '../../components/ui/Toast'
 import { ApiError, api } from '../../lib/api'
 import { patchPost, removePost } from '../../lib/postCache'
 import type { PostResponse, ReplyPolicy } from '../../lib/types'
-
-export type ReportReason = 'SPAM' | 'HARASSMENT' | 'HATE_SPEECH' | 'VIOLENCE' | 'SEXUAL_CONTENT' | 'MISINFORMATION' | 'OTHER'
+import type { ReportReason } from '../common/ReportDialog'
 
 const messageOf = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback)
 

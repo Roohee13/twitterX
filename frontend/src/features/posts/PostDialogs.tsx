@@ -3,7 +3,8 @@ import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'
 import type { PostResponse, ReplyPolicy } from '../../lib/types'
 import { MAX_POST_LENGTH } from '../compose/Composer'
-import { usePostActions, type ReportReason } from './usePostActions'
+import { ReportDialog } from '../common/ReportDialog'
+import { usePostActions } from './usePostActions'
 
 interface DialogProps {
   post: PostResponse
@@ -96,41 +97,7 @@ export function ReplyPolicyDialog({ post, onClose }: DialogProps) {
   )
 }
 
-const reasons: Array<{ value: ReportReason; label: string }> = [
-  { value: 'SPAM', label: "It's spam" },
-  { value: 'HARASSMENT', label: "It's abusive or harassing" },
-  { value: 'HATE_SPEECH', label: 'It contains hate speech' },
-  { value: 'VIOLENCE', label: 'It promotes violence' },
-  { value: 'SEXUAL_CONTENT', label: 'It contains sexual content' },
-  { value: 'MISINFORMATION', label: "It's misleading" },
-  { value: 'OTHER', label: 'Something else' },
-]
-
 export function ReportPostDialog({ post, onClose }: DialogProps) {
   const actions = usePostActions()
-  const [reason, setReason] = useState<ReportReason | null>(null)
-  const [sending, setSending] = useState(false)
-
-  async function send() {
-    if (!reason) return
-    setSending(true)
-    const done = await actions.report(post, reason)
-    setSending(false)
-    if (done) onClose()
-  }
-
-  return (
-    <Modal open onClose={onClose} title="Report post">
-      <fieldset className="space-y-1">
-        <legend className="mb-2 text-zinc-400">What's wrong with this post?</legend>
-        {reasons.map((r) => (
-          <label key={r.value} className="flex cursor-pointer items-center gap-3 rounded-lg p-2 hover:bg-zinc-900">
-            <input type="radio" name="report-reason" value={r.value} checked={reason === r.value} onChange={() => setReason(r.value)} />
-            {r.label}
-          </label>
-        ))}
-      </fieldset>
-      <div className="mt-4 flex justify-end"><Button onClick={() => void send()} loading={sending} disabled={!reason}>Report</Button></div>
-    </Modal>
-  )
+  return <ReportDialog title="Report post" onReport={(reason) => actions.report(post, reason)} onClose={onClose} />
 }

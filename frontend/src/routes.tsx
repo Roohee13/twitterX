@@ -8,6 +8,9 @@ import { VerifyEmailPage } from './features/auth/VerifyEmailPage'
 import { AppShell } from './features/shell/AppShell'
 import { HomePage } from './features/home/HomePage'
 import { PostPage } from './features/posts/PostPage'
+import { FollowListPage } from './features/profile/FollowListPage'
+import { FollowRequestsPage } from './features/profile/FollowRequestsPage'
+import { ProfilePage } from './features/profile/ProfilePage'
 import { NotFoundPage } from './features/shell/pages'
 
 export const router = createBrowserRouter([
@@ -19,6 +22,10 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <HomePage /> },
           { path: '/post/:id', element: <PostPage /> },
+          { path: '/u/:username', element: <ProfilePage /> },
+          { path: '/u/:username/followers', element: <FollowListPage kind="followers" /> },
+          { path: '/u/:username/following', element: <FollowListPage kind="following" /> },
+          { path: '/follow-requests', element: <FollowRequestsPage /> },
         ],
       },
     ],

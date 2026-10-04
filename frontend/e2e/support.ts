@@ -79,6 +79,8 @@ export function as(request: APIRequestContext, user: Pick<TestUser, 'accessToken
     bookmark: (postId: number) => run('post', `/api/posts/${postId}/bookmark`),
     setPolicy: (postId: number, replyPolicy: string) => run('patch', `/api/posts/${postId}/reply-policy`, { replyPolicy }),
     setProtected: () => run('patch', '/api/users/me', { protectedAccount: true }),
+    updateProfile: (data: Record<string, unknown>) => run('patch', '/api/users/me', data),
+    requestFollow: (username: string) => run('post', `/api/users/${username}/follow`),
     approve: (username: string) => run('post', `/api/users/me/follow-requests/${username}/approve`),
   }
 }
