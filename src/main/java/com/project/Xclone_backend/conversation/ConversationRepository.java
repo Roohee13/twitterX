@@ -1,6 +1,7 @@
 package com.project.Xclone_backend.conversation;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -32,18 +33,42 @@ public interface ConversationRepository extends JpaRepository<Conversation, Long
             """)
     Optional<Conversation> findByIdAndParticipant(Long id, Long userId);
 
-    /** Newest first; hides pairs blocked either way and conversations with a non-active participant. */
+    /** One row of the inbox: a conversation, its newest message and how many messages from the other person are unread. */
+    interface InboxRow {
+        Long getConversationId();
+
+        Long getLastMessageId();
+
+        Long getUnread();
+    }
+
+    /**
+     * The inbox: conversations that have at least one message, most recently active first. The cursor is the id of the newest
+     * message (unique per conversation, and growing with time), so paging by it is exact. Hides pairs blocked either way and
+     * conversations with a non-active participant.
+     */
+    @Query(value = """
+            select c.id as conversationId, lm.id as lastMessageId,
+                   (select count(*) from messages m
+                    where m.conversation_id = c.id and m.sender_id <> :userId and m.read_at is null) as unread
+            from conversations c
+            join users u1 on u1.id = c.user_one_id
+            join users u2 on u2.id = c.user_two_id
+            join lateral (select m.id from messages m where m.conversation_id = c.id order by m.id desc limit 1) lm on true
+            where (c.user_one_id = :userId or c.user_two_id = :userId) and lm.id < :cursor
+              and u1.status = 'ACTIVE' and u2.status = 'ACTIVE'
+              and not exists (select 1 from blocks b
+                   where (b.blocker_id = c.user_one_id and b.blocked_id = c.user_two_id)
+                      or (b.blocker_id = c.user_two_id and b.blocked_id = c.user_one_id))
+            order by lm.id desc
+            limit :limit
+            """, nativeQuery = true)
+    List<InboxRow> findInbox(Long userId, long cursor, int limit);
+
     @Query("""
-            select c from Conversation c join fetch c.userOne join fetch c.userTwo
-            where (c.userOne.id = :userId or c.userTwo.id = :userId) and c.id < :cursor
-              and c.userOne.status = com.project.Xclone_backend.user.AccountStatus.ACTIVE
-              and c.userTwo.status = com.project.Xclone_backend.user.AccountStatus.ACTIVE
-              and not exists (select 1 from Block b
-                   where (b.blocker.id = c.userOne.id and b.blocked.id = c.userTwo.id)
-                      or (b.blocker.id = c.userTwo.id and b.blocked.id = c.userOne.id))
-            order by c.id desc
+            select c from Conversation c join fetch c.userOne join fetch c.userTwo where c.id in :ids
             """)
-    List<Conversation> findPage(Long userId, long cursor, Limit limit);
+    List<Conversation> findAllWithUsers(Collection<Long> ids);
 
     /** Bumps updatedAt explicitly, since a new message does not dirty the conversation entity. */
     @Modifying

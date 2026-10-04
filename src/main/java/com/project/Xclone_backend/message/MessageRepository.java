@@ -10,6 +10,8 @@ import org.springframework.data.jpa.repository.Query;
 
 public interface MessageRepository extends JpaRepository<Message, Long> {
 
+    java.util.Optional<Message> findFirstByConversationIdOrderByIdDesc(Long conversationId);
+
     /** Newest first; callers reverse the page for display. */
     @Query("""
             select m from Message m join fetch m.sender

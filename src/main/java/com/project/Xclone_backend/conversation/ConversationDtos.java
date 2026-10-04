@@ -17,7 +17,14 @@ public final class ConversationDtos {
                     message = "must be 3-15 characters: letters, digits or underscore") String username) {
     }
 
-    /** {@code participant} is the other user in the conversation, never the caller. */
-    public record ConversationResponse(Long id, UserSummary participant, Instant createdAt, Instant updatedAt) {
+    public record LastMessage(Long id, Long senderId, String content, Instant createdAt) {
+    }
+
+    /**
+     * {@code participant} is the other user in the conversation, never the caller. {@code lastMessage} is null while nobody
+     * has written yet; {@code unreadCount} is how many of the other person's messages the caller has not read.
+     */
+    public record ConversationResponse(Long id, UserSummary participant, Instant createdAt, Instant updatedAt,
+            LastMessage lastMessage, long unreadCount) {
     }
 }

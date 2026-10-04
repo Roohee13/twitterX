@@ -1165,9 +1165,12 @@ class ApiIntegrationTest {
         assertThrows(DataIntegrityViolationException.class, () -> jdbc.update(insert, high, low));
         assertThrows(DataIntegrityViolationException.class, () -> jdbc.update(insert, low, low));
 
-        // Listing: only my conversations, newest first, paged.
-        mvc.perform(json(auth(post("/api/conversations"), alice), convBody(carol.username())))
-                .andExpect(status().isCreated());
+        // Listing: only my conversations that have messages, most recently active first, paged.
+        sendMessage(alice, convId, "hi bob");
+        long carolConv = ((Number) JsonPath.read(mvc.perform(json(auth(post("/api/conversations"), alice), convBody(carol.username())))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.id")).longValue();
+        mvc.perform(auth(get("/api/conversations"), alice)).andExpect(jsonPath("$.items", hasSize(1))); // nothing written to carol yet
+        sendMessage(alice, carolConv, "hi carol");
         mvc.perform(auth(get("/api/conversations"), alice))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items[*].participant.username", contains(carol.username(), bob.username())));
@@ -1201,6 +1204,7 @@ class ApiIntegrationTest {
                 json(auth(post("/api/conversations"), alice), convBody(bob.username())))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.id")).longValue();
 
+        sendMessage(alice, convId, "before the block");
         mvc.perform(auth(post("/api/users/" + bob.username() + "/block"), alice)).andExpect(status().isNoContent());
 
         // Blocked in either direction: no new access, hidden from both lists.
@@ -1240,6 +1244,57 @@ class ApiIntegrationTest {
                 .andExpect(status().isForbidden());
         mvc.perform(json(auth(post("/api/conversations"), carol), convBody(bob.username())))
                 .andExpect(status().isForbidden());
+        mvc.perform(auth(get("/api/conversations"), alice)).andExpect(jsonPath("$.items", hasSize(0)));
+    }
+
+    @Test
+    void inboxIsOrderedByLatestMessageAndShowsThePreviewAndUnreadCount() throws Exception {
+        Account alice = register();
+        Account bob = register();
+        Account carol = register();
+        Account dave = register();
+        long withBob = convId(alice, bob);
+        long withCarol = convId(alice, carol);
+        long withDave = convId(alice, dave);
+        sendMessage(bob, withBob, "first from bob");
+        sendMessage(carol, withCarol, "from carol");
+        sendMessage(dave, withDave, "from dave");
+        sendMessage(bob, withBob, "second from bob");   // the oldest conversation becomes the most recently active
+        sendMessage(alice, withDave, "alice answers dave");
+
+        mvc.perform(auth(get("/api/conversations"), alice)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[*].id", contains((int) withDave, (int) withBob, (int) withCarol)))
+                .andExpect(jsonPath("$.items[0].lastMessage.content").value("alice answers dave"))
+                .andExpect(jsonPath("$.items[0].lastMessage.senderId").value(alice.id()))
+                .andExpect(jsonPath("$.items[0].unreadCount").value(1)) // dave's own message is still unread
+                .andExpect(jsonPath("$.items[1].lastMessage.content").value("second from bob"))
+                .andExpect(jsonPath("$.items[1].unreadCount").value(2))
+                .andExpect(jsonPath("$.items[2].unreadCount").value(1));
+        // Bob's side: only the conversation he is in, nothing unread (alice never wrote to him).
+        mvc.perform(auth(get("/api/conversations"), bob)).andExpect(jsonPath("$.items", hasSize(1)))
+                .andExpect(jsonPath("$.items[0].unreadCount").value(0));
+
+        // Paging by the cursor does not skip or repeat.
+        String first = mvc.perform(auth(get("/api/conversations?limit=2"), alice)).andExpect(jsonPath("$.items", hasSize(2)))
+                .andReturn().getResponse().getContentAsString();
+        long cursor = ((Number) JsonPath.read(first, "$.nextCursor")).longValue();
+        mvc.perform(auth(get("/api/conversations?limit=2&cursor=" + cursor), alice))
+                .andExpect(jsonPath("$.items[*].id", contains((int) withCarol))).andExpect(jsonPath("$.nextCursor").doesNotExist());
+
+        // Reading clears the count; the single-conversation endpoint carries the same fields.
+        mvc.perform(auth(post("/api/conversations/" + withBob + "/read"), alice)).andExpect(status().isNoContent());
+        mvc.perform(auth(get("/api/conversations/" + withBob), alice)).andExpect(jsonPath("$.unreadCount").value(0))
+                .andExpect(jsonPath("$.lastMessage.content").value("second from bob"));
+        mvc.perform(auth(get("/api/conversations"), alice)).andExpect(jsonPath("$.items[1].unreadCount").value(0));
+    }
+
+    @Test
+    void aConversationWithoutMessagesHasNoPreviewAndIsNotInTheInbox() throws Exception {
+        Account alice = register();
+        Account bob = register();
+        long convId = convId(alice, bob);
+        mvc.perform(auth(get("/api/conversations/" + convId), alice)).andExpect(jsonPath("$.lastMessage").doesNotExist())
+                .andExpect(jsonPath("$.unreadCount").value(0));
         mvc.perform(auth(get("/api/conversations"), alice)).andExpect(jsonPath("$.items", hasSize(0)));
     }
 
@@ -1423,6 +1478,11 @@ class ApiIntegrationTest {
     }
 
     // --- helpers ---
+
+    private long convId(Account me, Account other) throws Exception {
+        String res = mvc.perform(json(auth(post("/api/conversations"), me), convBody(other.username()))).andReturn().getResponse().getContentAsString();
+        return ((Number) JsonPath.read(res, "$.id")).longValue();
+    }
 
     private void sendMessage(Account from, long conversationId, String content) throws Exception {
         mvc.perform(json(auth(post("/api/conversations/" + conversationId + "/messages"), from), msgBody(content)))

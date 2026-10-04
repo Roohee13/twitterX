@@ -58,6 +58,11 @@ Connect to `ws://<host>/ws` and send the access token in the STOMP `CONNECT` fra
 Send messages to `/app/conversations/{id}/messages`. Pushes are best-effort: a client that is offline or reconnecting misses them, so
 on connect (and reconnect) fetch `GET /notifications/unread-count` and the latest page over REST, then increment from pushes.
 
+**Inbox.** `GET /conversations` lists only conversations that have at least one message, most recently active first. Each item carries
+`lastMessage` (`id`, `senderId`, `content`, `createdAt`) and `unreadCount` (messages from the other person you have not read). The cursor
+is the id of the newest message, so paging is exact even while new messages arrive. `GET /conversations/{id}` has the same two fields (`lastMessage` is
+null before the first message); `GET /conversations/unread-count` is the total for a badge.
+
 **Running several instances.** Pushes (notifications and messages) are published to the Redis channel `ws:user-push` and every instance
 delivers them to the sessions it holds, so a user receives them on whichever instance they are connected to. This is on by default
 (`WS_REDIS_RELAY=false` turns it off for a single instance). Redis does not have to be up at boot: the app starts, delivers pushes to
