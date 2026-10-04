@@ -63,6 +63,17 @@ on connect (and reconnect) fetch `GET /notifications/unread-count` and the lates
 is the id of the newest message, so paging is exact even while new messages arrive. `GET /conversations/{id}` has the same two fields (`lastMessage` is
 null before the first message); `GET /conversations/unread-count` is the total for a badge.
 
+**Editing and deleting messages.** The sender can change or remove their own messages, with no time limit:
+
+| Method | Path | Notes |
+|---|---|---|
+| PATCH | `/conversations/{id}/messages/{messageId}` | `{content}` (1 to 2000 characters). Returns the message with `editedAt` set. Saving the same text changes nothing. `403` if it is not yours, `404` if it is not in that conversation, `409` if it was deleted |
+| DELETE | `/conversations/{id}/messages/{messageId}` | Deletes it **for both people**: the text is erased from the database and the row stays as a placeholder (`deleted: true`, `content: ""`) so the chat keeps its order and the inbox keeps working. `204`, safe to repeat |
+
+A deleted message no longer counts as unread (per conversation, in the total, and in the inbox). Both endpoints answer `403` when the pair is blocked or inactive, like sending does.
+The other person's open chat is told over `/user/queue/message-updates` (a `MessageResponse`, the same shape as a message), so it replaces the message instead of adding one;
+`/user/queue/messages` stays for new messages only. Message responses carry `editedAt` (null if never edited) and `deleted`; `lastMessage` in the inbox carries `deleted` too.
+
 **Running several instances.** Pushes (notifications and messages) are published to the Redis channel `ws:user-push` and every instance
 delivers them to the sessions it holds, so a user receives them on whichever instance they are connected to. This is on by default
 (`WS_REDIS_RELAY=false` turns it off for a single instance). Redis does not have to be up at boot: the app starts, delivers pushes to

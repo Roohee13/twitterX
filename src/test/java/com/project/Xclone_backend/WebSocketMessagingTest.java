@@ -171,6 +171,44 @@ class WebSocketMessagingTest {
     }
 
     @Test
+    void editingAndDeletingAMessageArePushedToTheRecipientAsUpdatesNotAsNewMessages() throws Exception {
+        Account alice = newUser();
+        Account bob = newUser();
+        Account carol = newUser();
+        long conv = newConversation(alice, bob);
+        Connection b = connect(bob.token());
+        Connection c = connect(carol.token());
+        BlockingQueue<Map<String, Object>> bobInbox = b.subscribe("/user/queue/messages", userRegistry, bob.id());
+        BlockingQueue<Map<String, Object>> bobUpdates = b.subscribe("/user/queue/message-updates", userRegistry, bob.id());
+        BlockingQueue<Map<String, Object>> carolUpdates = c.subscribe("/user/queue/message-updates", userRegistry, carol.id());
+        String base = "http://localhost:" + port + "/api/conversations/" + conv + "/messages";
+        HttpClient http = HttpClient.newHttpClient();
+        HttpRequest.Builder as = HttpRequest.newBuilder().uri(URI.create(base)).header("Authorization", "Bearer " + alice.token())
+                .header("Content-Type", "application/json");
+        assertEquals(201, http.send(as.POST(HttpRequest.BodyPublishers.ofString("{\"content\":\"first draft\"}")).build(),
+                HttpResponse.BodyHandlers.ofString()).statusCode());
+        Number id = (Number) next(bobInbox).get("id");
+
+        HttpRequest.Builder one = HttpRequest.newBuilder().uri(URI.create(base + "/" + id)).header("Authorization", "Bearer " + alice.token())
+                .header("Content-Type", "application/json");
+        assertEquals(200, http.send(one.method("PATCH", HttpRequest.BodyPublishers.ofString("{\"content\":\"second draft\"}")).build(),
+                HttpResponse.BodyHandlers.ofString()).statusCode());
+        Map<String, Object> edited = next(bobUpdates);
+        assertEquals(id.longValue(), ((Number) edited.get("id")).longValue());
+        assertEquals("second draft", edited.get("content"));
+        assertNotNull(edited.get("editedAt"));
+        assertEquals(false, edited.get("deleted"));
+
+        assertEquals(204, http.send(one.DELETE().build(), HttpResponse.BodyHandlers.ofString()).statusCode());
+        Map<String, Object> deleted = next(bobUpdates);
+        assertEquals(true, deleted.get("deleted"));
+        assertEquals("", deleted.get("content"));
+
+        assertNone(bobInbox);      // neither change arrives as a new message
+        assertNone(carolUpdates);  // and nobody else hears about them
+    }
+
+    @Test
     void offlineRecipientDoesNotBreakSending() throws Exception {
         Account alice = newUser();
         Account bob = newUser();

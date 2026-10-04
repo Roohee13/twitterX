@@ -50,7 +50,7 @@ public interface ConversationRepository extends JpaRepository<Conversation, Long
     @Query(value = """
             select c.id as conversationId, lm.id as lastMessageId,
                    (select count(*) from messages m
-                    where m.conversation_id = c.id and m.sender_id <> :userId and m.read_at is null) as unread
+                    where m.conversation_id = c.id and m.sender_id <> :userId and m.read_at is null and not m.deleted) as unread
             from conversations c
             join users u1 on u1.id = c.user_one_id
             join users u2 on u2.id = c.user_two_id

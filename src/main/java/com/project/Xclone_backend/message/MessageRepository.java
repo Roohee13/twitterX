@@ -12,6 +12,9 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
 
     java.util.Optional<Message> findFirstByConversationIdOrderByIdDesc(Long conversationId);
 
+    @Query("select m from Message m join fetch m.sender join fetch m.conversation c join fetch c.userOne join fetch c.userTwo where m.id = :id and c.id = :conversationId")
+    java.util.Optional<Message> findInConversation(Long id, Long conversationId);
+
     /** Newest first; callers reverse the page for display. */
     @Query("""
             select m from Message m join fetch m.sender
@@ -23,7 +26,7 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
     /** Messages in the conversation that someone else sent and the user has not read yet. */
     @Query("""
             select count(m) from Message m
-            where m.conversation.id = :conversationId and m.sender.id <> :userId and m.readAt is null
+            where m.conversation.id = :conversationId and m.sender.id <> :userId and m.readAt is null and m.deleted = false
             """)
     long countUnread(Long conversationId, Long userId);
 
@@ -31,7 +34,7 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
     @Query("""
             select count(m) from Message m join m.conversation c
             where (c.userOne.id = :userId or c.userTwo.id = :userId)
-              and m.sender.id <> :userId and m.readAt is null
+              and m.sender.id <> :userId and m.readAt is null and m.deleted = false
               and c.userOne.status = com.project.Xclone_backend.user.AccountStatus.ACTIVE
               and c.userTwo.status = com.project.Xclone_backend.user.AccountStatus.ACTIVE
               and not exists (select 1 from Block b

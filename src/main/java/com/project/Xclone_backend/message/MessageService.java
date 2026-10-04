@@ -14,6 +14,7 @@ import com.project.Xclone_backend.common.CursorPage;
 import com.project.Xclone_backend.conversation.Conversation;
 import com.project.Xclone_backend.conversation.ConversationRepository;
 import com.project.Xclone_backend.conversation.ConversationService;
+import com.project.Xclone_backend.common.ApiException;
 import com.project.Xclone_backend.message.MessageDtos.MessageResponse;
 import com.project.Xclone_backend.message.MessageDtos.UnreadCountResponse;
 import com.project.Xclone_backend.user.UserMapper;
@@ -65,6 +66,54 @@ public class MessageService {
                 })));
     }
 
+    /** Only the sender, only their own message, and not once it is deleted. Saving the same text again changes nothing. */
+    @Transactional
+    public MessageResponse edit(Long meId, Long conversationId, Long messageId, String content) {
+        Message message = requireOwnMessage(meId, conversationId, messageId);
+        if (message.isDeleted()) {
+            throw ApiException.conflict("This message was deleted");
+        }
+        String text = content.strip();
+        if (text.isEmpty()) {
+            throw ApiException.badRequest("Message cannot be empty");
+        }
+        if (!text.equals(message.getContent())) {
+            message.setContent(text);
+            message.setEditedAt(Instant.now());
+            announceChange(meId, message);
+        }
+        return toResponse(message);
+    }
+
+    /** Deletes for both people: the text is erased and the row stays as a "deleted" placeholder. Safe to repeat. */
+    @Transactional
+    public void delete(Long meId, Long conversationId, Long messageId) {
+        Message message = requireOwnMessage(meId, conversationId, messageId);
+        if (message.isDeleted()) {
+            return;
+        }
+        message.setDeleted(true);
+        message.setContent("");
+        announceChange(meId, message);
+    }
+
+    private Message requireOwnMessage(Long meId, Long conversationId, Long messageId) {
+        conversationService.requireAccessible(meId, conversationId);
+        Message message = messageRepository.findInConversation(messageId, conversationId)
+                .orElseThrow(() -> ApiException.notFound("Message not found"));
+        if (!message.getSender().getId().equals(meId)) {
+            throw ApiException.forbidden("You can only change your own messages");
+        }
+        return message;
+    }
+
+    /** After commit the other person's open chat is told, so the change shows without a reload. */
+    private void announceChange(Long meId, Message message) {
+        Conversation c = message.getConversation();
+        Long recipientId = c.getUserOne().getId().equals(meId) ? c.getUserTwo().getId() : c.getUserOne().getId();
+        events.publishEvent(new MessageChangedEvent(recipientId, toResponse(message)));
+    }
+
     @Transactional(readOnly = true)
     public UnreadCountResponse unreadCount(Long meId, Long conversationId) {
         conversationService.requireAccessible(meId, conversationId);
@@ -85,6 +134,6 @@ public class MessageService {
 
     private MessageResponse toResponse(Message m) {
         return new MessageResponse(m.getId(), m.getConversation().getId(), userMapper.toSummary(m.getSender()),
-                m.getContent(), m.getCreatedAt());
+                m.getContent(), m.getCreatedAt(), m.getEditedAt(), m.isDeleted());
     }
 }

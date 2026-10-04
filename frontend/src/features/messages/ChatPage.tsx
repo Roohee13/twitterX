@@ -12,6 +12,7 @@ import type { ConversationResponse, MessageResponse } from '../../lib/types'
 import { useCurrentUser } from '../auth/AuthContext'
 import { PageHeader } from '../shell/PageHeader'
 import { MessageBubble } from './MessageBubble'
+import { MessageItem } from './MessageItem'
 import { MessageComposer } from './MessageComposer'
 import { addMessage, conversationKey, threadKey } from './messageCache'
 import { markRead } from './messageHooks'
@@ -108,7 +109,7 @@ export function ChatPage() {
         {messages.map((m, i) => (
           <Fragment key={m.id}>
             {(i === 0 || day(messages[i - 1].createdAt) !== day(m.createdAt)) && <p className="my-2 text-center text-xs text-zinc-500">{dayLabel(m.createdAt)}</p>}
-            <MessageBubble content={m.content} createdAt={m.createdAt} mine={m.sender.id === me.id} />
+            <MessageItem message={m} mine={m.sender.id === me.id} />
           </Fragment>
         ))}
         {pending.map((item) => (

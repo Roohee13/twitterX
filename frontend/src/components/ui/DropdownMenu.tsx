@@ -16,10 +16,12 @@ interface DropdownMenuProps {
   items: MenuItem[]
   triggerClassName?: string
   pressed?: boolean
+  /** Open above the button instead of below it (for buttons at the bottom of the screen). */
+  opensUp?: boolean
 }
 
 /** A button that opens a small menu: closes on outside click, Escape or choosing an item; arrow keys move between items. */
-export function DropdownMenu({ label, trigger, items, triggerClassName = '', pressed }: DropdownMenuProps) {
+export function DropdownMenu({ label, trigger, items, triggerClassName = '', pressed, opensUp = false }: DropdownMenuProps) {
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLDivElement>(null)
   const button = useRef<HTMLButtonElement>(null)
@@ -63,7 +65,7 @@ export function DropdownMenu({ label, trigger, items, triggerClassName = '', pre
         {trigger}
       </button>
       {open && (
-        <div id={menuId} role="menu" aria-label={label} className="absolute right-0 top-full z-30 mt-1 min-w-52 overflow-hidden rounded-xl border border-zinc-700 bg-black py-1 shadow-xl shadow-white/5">
+        <div id={menuId} role="menu" aria-label={label} className={`absolute right-0 z-30 min-w-52 overflow-hidden rounded-xl border border-zinc-700 bg-black py-1 shadow-xl shadow-white/5 ${opensUp ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
           {items.map((item) => (
             <button
               key={item.label}

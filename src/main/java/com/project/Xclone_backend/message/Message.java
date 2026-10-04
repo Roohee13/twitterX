@@ -51,4 +51,11 @@ public class Message {
 
     /** When the recipient read it; null means unread. */
     private Instant readAt;
+
+    /** When the sender last changed the text; null if never edited. */
+    private Instant editedAt;
+
+    /** The sender deleted it for both people: {@code content} is then empty and stays so. */
+    @Column(nullable = false)
+    private boolean deleted;
 }

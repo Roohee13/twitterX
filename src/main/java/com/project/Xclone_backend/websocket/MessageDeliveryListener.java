@@ -4,6 +4,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
+import com.project.Xclone_backend.message.MessageChangedEvent;
 import com.project.Xclone_backend.message.MessageSentEvent;
 
 import lombok.RequiredArgsConstructor;
@@ -26,6 +27,16 @@ public class MessageDeliveryListener {
             push.send(event.recipientId(), "/queue/messages", event.message());
         } catch (RuntimeException e) {
             log.warn("Could not push message {} to user {}", event.message().id(), event.recipientId(), e);
+        }
+    }
+
+    /** An edit or delete goes to /user/queue/message-updates (the same shape as a message), so clients replace the message instead of adding one. */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onMessageChanged(MessageChangedEvent event) {
+        try {
+            push.send(event.recipientId(), "/queue/message-updates", event.message());
+        } catch (RuntimeException e) {
+            log.warn("Could not push the change of message {} to user {}", event.message().id(), event.recipientId(), e);
         }
     }
 }

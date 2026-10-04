@@ -17,7 +17,8 @@ public final class ConversationDtos {
                     message = "must be 3-15 characters: letters, digits or underscore") String username) {
     }
 
-    public record LastMessage(Long id, Long senderId, String content, Instant createdAt) {
+    /** {@code content} is empty and {@code deleted} true when the sender deleted the message. */
+    public record LastMessage(Long id, Long senderId, String content, Instant createdAt, boolean deleted) {
     }
 
     /**

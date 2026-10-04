@@ -6,7 +6,7 @@ import { ApiError, api } from '../../lib/api'
 import type { ConversationResponse, MessageResponse } from '../../lib/types'
 import { useCurrentUser } from '../auth/AuthContext'
 import { useLiveConnect, useLiveSubscription } from '../notifications/liveSocketContext'
-import { MESSAGES_KEY, UNREAD_MESSAGES_KEY, addMessage, markConversationReadLocally } from './messageCache'
+import { MESSAGES_KEY, UNREAD_MESSAGES_KEY, addMessage, markConversationReadLocally, replaceMessage } from './messageCache'
 
 /** How many messages are waiting across all conversations; what the badge in the navigation shows. */
 export function useUnreadMessages() {
@@ -44,6 +44,9 @@ export function useLiveMessages() {
     [queryClient, openId],
   )
   useLiveSubscription('/user/queue/messages', onPush)
+  // The other person edited or deleted one of their messages: replace it, do not add another.
+  const onUpdate = useCallback((body: unknown) => void replaceMessage(queryClient, body as MessageResponse), [queryClient])
+  useLiveSubscription('/user/queue/message-updates', onUpdate)
   // Messages that arrived before the connection was up (or while it was down) were never pushed, so read the real state.
   const catchUp = useCallback(() => void queryClient.invalidateQueries({ queryKey: MESSAGES_KEY }), [queryClient])
   useLiveConnect(catchUp)

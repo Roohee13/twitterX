@@ -8,7 +8,12 @@ import { useCurrentUser } from '../auth/AuthContext'
 export function ConversationRow({ conversation }: { conversation: ConversationResponse }) {
   const me = useCurrentUser()
   const { participant, lastMessage, unreadCount } = conversation
-  const preview = lastMessage ? `${lastMessage.senderId === me.id ? 'You: ' : ''}${lastMessage.content}` : 'No messages yet'
+  const mine = lastMessage?.senderId === me.id
+  const preview = !lastMessage
+    ? 'No messages yet'
+    : lastMessage.deleted
+      ? mine ? 'You deleted a message' : 'This message was deleted'
+      : `${mine ? 'You: ' : ''}${lastMessage.content}`
   return (
     <Link
       to={`/messages/${conversation.id}`}

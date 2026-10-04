@@ -42,7 +42,7 @@ export async function addMessage(queryClient: QueryClient, message: MessageRespo
     const updated: ConversationResponse = {
       ...known,
       updatedAt: message.createdAt,
-      lastMessage: { id: message.id, senderId: message.sender.id, content: message.content, createdAt: message.createdAt },
+      lastMessage: { id: message.id, senderId: message.sender.id, content: message.content, createdAt: message.createdAt, deleted: message.deleted },
       unreadCount: unread ? known.unreadCount + 1 : known.unreadCount,
     }
     const [first, ...rest] = inbox.pages.map((page) => ({ ...page, items: page.items.filter((c) => c.id !== message.conversationId) }))
@@ -55,6 +55,36 @@ export async function addMessage(queryClient: QueryClient, message: MessageRespo
 /** Reads that were cancelled before they had any data (a first load) would stay empty for good, so they start again. */
 function reviveEmpty(queryClient: QueryClient) {
   void queryClient.invalidateQueries({ queryKey: MESSAGES_KEY, predicate: (q) => q.state.data === undefined })
+}
+
+/**
+ * A message was edited or deleted, by you or (pushed) by the other person: every place that shows it changes at once, then the lists are read
+ * again (a deleted message may have been one of the unread ones, and only the server knows). Reads already on their way are cancelled first,
+ * as in addMessage.
+ */
+export async function replaceMessage(queryClient: QueryClient, message: MessageResponse) {
+  await queryClient.cancelQueries({ queryKey: MESSAGES_KEY })
+  const key = threadKey(message.conversationId)
+  const thread = queryClient.getQueryData<Thread>(key)
+  if (thread) {
+    queryClient.setQueryData<Thread>(key, {
+      ...thread,
+      pages: thread.pages.map((page) => ({ ...page, items: page.items.map((m) => (m.id === message.id ? message : m)) })),
+    })
+  }
+  const inbox = queryClient.getQueryData<Inbox>(INBOX_KEY)
+  if (inbox) {
+    queryClient.setQueryData<Inbox>(INBOX_KEY, {
+      ...inbox,
+      pages: inbox.pages.map((page) => ({
+        ...page,
+        items: page.items.map((c) =>
+          c.lastMessage?.id === message.id ? { ...c, lastMessage: { ...c.lastMessage, content: message.content, deleted: message.deleted } } : c,
+        ),
+      })),
+    })
+  }
+  void queryClient.invalidateQueries({ queryKey: MESSAGES_KEY })
 }
 
 /** You opened or read the conversation: its unread count goes to zero, and the total drops by what it was. */

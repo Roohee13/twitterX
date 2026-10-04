@@ -97,6 +97,7 @@ export interface LastMessage {
   senderId: number
   content: string
   createdAt: string
+  deleted: boolean
 }
 
 export interface ConversationResponse {
@@ -114,8 +115,12 @@ export interface MessageResponse {
   id: number
   conversationId: number
   sender: UserSummary
+  /** Empty once the sender deleted the message. */
   content: string
   createdAt: string
+  /** When the sender last changed the text; null if never edited. */
+  editedAt: string | null
+  deleted: boolean
 }
 
 export interface UploadUrlResponse {

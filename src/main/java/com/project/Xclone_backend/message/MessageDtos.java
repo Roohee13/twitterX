@@ -15,8 +15,12 @@ public final class MessageDtos {
     public record SendMessageRequest(@NotBlank @Size(max = Message.MAX_LENGTH) String content) {
     }
 
+    /** {@code content} is empty and {@code deleted} true once the sender deleted it; {@code editedAt} is null if never edited. */
     public record MessageResponse(Long id, Long conversationId, UserSummary sender, String content,
-            Instant createdAt) {
+            Instant createdAt, Instant editedAt, boolean deleted) {
+    }
+
+    public record EditMessageRequest(@NotBlank @Size(max = Message.MAX_LENGTH) String content) {
     }
 
     public record UnreadCountResponse(long count) {

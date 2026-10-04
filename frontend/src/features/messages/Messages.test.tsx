@@ -30,7 +30,7 @@ const meSummary = makeUser({ id: me.id, username: me.username, displayName: me.d
 let nextMessageId = 100
 const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000).toISOString()
 const message = (conversationId: number, from: 'me' | 'them', content: string, overrides: Partial<MessageResponse> = {}): MessageResponse => ({
-  id: nextMessageId++, conversationId, sender: from === 'me' ? meSummary : dana, content, createdAt: minutesAgo(5), ...overrides,
+  id: nextMessageId++, conversationId, sender: from === 'me' ? meSummary : dana, content, createdAt: minutesAgo(5), editedAt: null, deleted: false, ...overrides,
 })
 /** One page of a thread the way the API serves it: the latest messages first, each page ordered oldest to newest, `nextCursor` = the oldest id on the page. */
 function pageOf(oldestFirst: MessageResponse[], cursor: number, limit: number) {
@@ -54,6 +54,9 @@ function serve(initial: { conversations: ConversationResponse[]; messages?: Reco
     failNextSend: null as string | null,
     /** Milliseconds a message with this text takes to be saved, to make slow requests overtake each other. */
     sendDelay: {} as Record<string, number>,
+    edits: [] as Array<{ id: number; content: string }>,
+    deletes: [] as number[],
+    failNextChange: null as string | null,
   }
   const inboxRows = () => state.conversations.filter((c) => c.lastMessage).sort((a, b) => b.lastMessage!.id - a.lastMessage!.id)
   server.use(
@@ -91,8 +94,34 @@ function serve(initial: { conversations: ConversationResponse[]; messages?: Reco
       state.sent.push({ conversationId: id, content })
       const saved = message(id, 'me', content, { createdAt: new Date().toISOString() })
       state.messages[id] = [...(state.messages[id] ?? []), saved]
-      state.conversations = state.conversations.map((c) => (c.id === id ? { ...c, lastMessage: { id: saved.id, senderId: me.id, content, createdAt: saved.createdAt } } : c))
+      state.conversations = state.conversations.map((c) => (c.id === id ? { ...c, lastMessage: { id: saved.id, senderId: me.id, content, createdAt: saved.createdAt, deleted: false } } : c))
       return HttpResponse.json(saved, { status: 201 })
+    }),
+    http.patch(`${BASE}/api/conversations/:id/messages/:messageId`, async ({ params, request }) => {
+      if (state.failNextChange) {
+        const detail = state.failNextChange
+        state.failNextChange = null
+        return HttpResponse.json({ status: 403, detail }, { status: 403 })
+      }
+      const { content } = (await request.json()) as { content: string }
+      const list = state.messages[Number(params.id)] ?? []
+      const found = list.find((m) => m.id === Number(params.messageId))
+      if (!found) return HttpResponse.json({ status: 404, detail: 'Message not found' }, { status: 404 })
+      state.edits.push({ id: found.id, content })
+      Object.assign(found, { content, editedAt: new Date().toISOString() })
+      return HttpResponse.json(found)
+    }),
+    http.delete(`${BASE}/api/conversations/:id/messages/:messageId`, ({ params }) => {
+      if (state.failNextChange) {
+        const detail = state.failNextChange
+        state.failNextChange = null
+        return HttpResponse.json({ status: 403, detail }, { status: 403 })
+      }
+      const found = (state.messages[Number(params.id)] ?? []).find((m) => m.id === Number(params.messageId))
+      if (!found) return HttpResponse.json({ status: 404, detail: 'Message not found' }, { status: 404 })
+      state.deletes.push(found.id)
+      Object.assign(found, { content: '', deleted: true })
+      return new HttpResponse(null, { status: 204 })
     }),
     http.post(`${BASE}/api/conversations/:id/read`, ({ params }) => {
       state.read.push(Number(params.id))
@@ -130,14 +159,15 @@ function open(route: string, state = serve({ conversations: [] })) {
   return { state, live }
 }
 const PUSH = '/user/queue/messages'
+const UPDATES = '/user/queue/message-updates'
 const textbox = () => screen.getByRole('textbox', { name: 'Message' })
 
 describe('the inbox', () => {
   it('lists conversations most recent first, with the preview, who wrote it and the unread count', async () => {
     const state = serve({
       conversations: [
-        conversation(1, dana, { lastMessage: { id: 10, senderId: dana.id, content: 'see you tomorrow', createdAt: minutesAgo(3) }, unreadCount: 2 }),
-        conversation(2, eli, { lastMessage: { id: 20, senderId: me.id, content: 'sounds good', createdAt: minutesAgo(30) } }),
+        conversation(1, dana, { lastMessage: { id: 10, senderId: dana.id, content: 'see you tomorrow', createdAt: minutesAgo(3), deleted: false }, unreadCount: 2 }),
+        conversation(2, eli, { lastMessage: { id: 20, senderId: me.id, content: 'sounds good', createdAt: minutesAgo(30), deleted: false } }),
       ],
     })
     open('/messages', state)
@@ -322,7 +352,7 @@ describe('a conversation', () => {
   })
 
   it('opening it with unread messages marks them read, and the total drops', async () => {
-    const state = serve({ conversations: [conversation(1, dana, { unreadCount: 3, lastMessage: { id: 5, senderId: dana.id, content: 'hey', createdAt: minutesAgo(1) } })], messages: { 1: [message(1, 'them', 'hey')] } })
+    const state = serve({ conversations: [conversation(1, dana, { unreadCount: 3, lastMessage: { id: 5, senderId: dana.id, content: 'hey', createdAt: minutesAgo(1), deleted: false } })], messages: { 1: [message(1, 'them', 'hey')] } })
     open('/messages/1', state)
     await waitFor(() => expect(screen.getByTestId('badge')).toHaveTextContent('3'))
 
@@ -339,7 +369,7 @@ describe('live messages', () => {
     await waitFor(() => expect(live.subscribed(PUSH)).toBe(1))
     const pushed = message(1, 'them', 'just now!', { createdAt: new Date().toISOString() })
     state.messages[1].push(pushed)
-    state.conversations = [conversation(1, dana, { unreadCount: 1, lastMessage: { id: pushed.id, senderId: dana.id, content: pushed.content, createdAt: pushed.createdAt } })]
+    state.conversations = [conversation(1, dana, { unreadCount: 1, lastMessage: { id: pushed.id, senderId: dana.id, content: pushed.content, createdAt: pushed.createdAt, deleted: false } })]
 
     await live.push(PUSH, pushed)
 
@@ -351,15 +381,15 @@ describe('live messages', () => {
   it('a message pushed while looking at the inbox moves that conversation to the top and raises the count', async () => {
     const state = serve({
       conversations: [
-        conversation(1, dana, { lastMessage: { id: 10, senderId: dana.id, content: 'older chat', createdAt: minutesAgo(60) } }),
-        conversation(2, eli, { lastMessage: { id: 20, senderId: eli.id, content: 'newer chat', createdAt: minutesAgo(10) } }),
+        conversation(1, dana, { lastMessage: { id: 10, senderId: dana.id, content: 'older chat', createdAt: minutesAgo(60), deleted: false } }),
+        conversation(2, eli, { lastMessage: { id: 20, senderId: eli.id, content: 'newer chat', createdAt: minutesAgo(10), deleted: false } }),
       ],
     })
     const { live } = open('/messages', state)
     await screen.findByRole('link', { name: 'Conversation with Eli Eng' })
     await waitFor(() => expect(screen.getByTestId('badge')).toHaveTextContent('0'))
     const pushed = message(1, 'them', 'psst, new message', { id: 30, createdAt: new Date().toISOString() })
-    state.conversations = state.conversations.map((c) => (c.id === 1 ? { ...c, unreadCount: 1, lastMessage: { id: 30, senderId: dana.id, content: pushed.content, createdAt: pushed.createdAt } } : c))
+    state.conversations = state.conversations.map((c) => (c.id === 1 ? { ...c, unreadCount: 1, lastMessage: { id: 30, senderId: dana.id, content: pushed.content, createdAt: pushed.createdAt, deleted: false } } : c))
 
     await live.push(PUSH, pushed)
 
@@ -372,7 +402,7 @@ describe('live messages', () => {
     const state = serve({ conversations: [] })
     const { live } = open('/messages', state)
     await screen.findByText('No messages yet')
-    state.conversations = [conversation(1, dana, { unreadCount: 2, lastMessage: { id: 5, senderId: dana.id, content: 'sent while connecting', createdAt: minutesAgo(1) } })]
+    state.conversations = [conversation(1, dana, { unreadCount: 2, lastMessage: { id: 5, senderId: dana.id, content: 'sent while connecting', createdAt: minutesAgo(1), deleted: false } })]
 
     await live.connect()
 
@@ -458,5 +488,177 @@ describe('messaging from a profile', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Message Blocked One' }))
     expect(await screen.findByText('You cannot message this user')).toBeInTheDocument()
     expect(screen.getByTestId('where')).toHaveTextContent('/u/dana')
+  })
+})
+
+describe('editing and deleting messages', () => {
+  const chat = () => serve({
+    conversations: [conversation(1)],
+    messages: { 1: [message(1, 'them', 'hello from them', { createdAt: minutesAgo(10) }), message(1, 'me', 'my first message', { createdAt: minutesAgo(5) })] },
+  })
+  const menuOf = (text: string) => within(screen.getByText(text).closest('div.group') as HTMLElement).getByRole('button', { name: 'Message actions' })
+
+  it('only your own messages have the menu', async () => {
+    open('/messages/1', chat())
+    await screen.findByText('my first message')
+    expect(menuOf('my first message')).toBeInTheDocument()
+    expect(within(screen.getByText('hello from them').closest('div.group') as HTMLElement).queryByRole('button', { name: 'Message actions' })).not.toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Message actions' })).toHaveLength(1)
+  })
+
+  it('edits in place: the box starts with the text, Enter saves exactly the new text, and the message is marked "edited"', async () => {
+    const state = chat()
+    open('/messages/1', state)
+    await screen.findByText('my first message')
+
+    await userEvent.click(menuOf('my first message'))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Edit' }))
+    const box = await screen.findByRole('textbox', { name: 'Edit message' })
+    expect(box).toHaveValue('my first message')
+    await userEvent.clear(box)
+    await userEvent.type(box, 'my corrected message{Enter}')
+
+    expect(await screen.findByText('my corrected message')).toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: 'Edit message' })).not.toBeInTheDocument()
+    expect(screen.queryByText('my first message')).not.toBeInTheDocument()
+    expect(state.edits).toEqual([{ id: state.messages[1][1].id, content: 'my corrected message' }])
+    expect(screen.getByText(/· edited/)).toBeInTheDocument()
+    expect(screen.getAllByText(/· edited/)).toHaveLength(1) // only the one that was changed
+  })
+
+  it('Escape or Cancel leaves it as it was, and saving unchanged text sends nothing', async () => {
+    const state = chat()
+    open('/messages/1', state)
+    await screen.findByText('my first message')
+
+    await userEvent.click(menuOf('my first message'))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Edit' }))
+    await userEvent.type(await screen.findByRole('textbox', { name: 'Edit message' }), ' extra{Escape}')
+    expect(screen.queryByRole('textbox', { name: 'Edit message' })).not.toBeInTheDocument()
+    expect(screen.getByText('my first message')).toBeInTheDocument()
+
+    await userEvent.click(menuOf('my first message'))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Edit' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('textbox', { name: 'Edit message' })).not.toBeInTheDocument()
+
+    await userEvent.click(menuOf('my first message'))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Edit' }))
+    await userEvent.type(await screen.findByRole('textbox', { name: 'Edit message' }), '{Enter}') // nothing changed
+    expect(screen.queryByRole('textbox', { name: 'Edit message' })).not.toBeInTheDocument()
+    expect(state.edits).toEqual([])
+  })
+
+  it('will not save an empty message, and shows the server\'s reason while keeping what you typed', async () => {
+    const state = chat()
+    open('/messages/1', state)
+    await screen.findByText('my first message')
+    await userEvent.click(menuOf('my first message'))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Edit' }))
+    const box = await screen.findByRole('textbox', { name: 'Edit message' })
+
+    await userEvent.clear(box)
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    await userEvent.type(box, '   {Enter}')
+    expect(await screen.findByText('A message cannot be empty')).toBeInTheDocument()
+    expect(state.edits).toEqual([])
+
+    await userEvent.clear(box)
+    await userEvent.type(box, 'new words')
+    state.failNextChange = 'This user cannot receive messages'
+    await userEvent.type(box, '{Enter}')
+
+    expect(await screen.findByText('This user cannot receive messages')).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Edit message' })).toHaveValue('new words')
+  })
+
+  it('asks before deleting; cancelling keeps the message', async () => {
+    const state = chat()
+    open('/messages/1', state)
+    await screen.findByText('my first message')
+    await userEvent.click(menuOf('my first message'))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Delete' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Delete this message?' })
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+
+    expect(state.deletes).toEqual([])
+    expect(screen.getByText('my first message')).toBeInTheDocument()
+  })
+
+  it('deletes for both: the text is replaced by a note, which has no menu', async () => {
+    const state = chat()
+    open('/messages/1', state)
+    await screen.findByText('my first message')
+    await userEvent.click(menuOf('my first message'))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Delete' }))
+    await userEvent.click(within(await screen.findByRole('dialog', { name: 'Delete this message?' })).getByRole('button', { name: 'Delete' }))
+
+    expect(await screen.findByText('You deleted this message')).toBeInTheDocument()
+    expect(screen.queryByText('my first message')).not.toBeInTheDocument()
+    expect(state.deletes).toEqual([state.messages[1][1].id])
+    expect(screen.queryByRole('button', { name: 'Message actions' })).not.toBeInTheDocument()
+    expect(screen.getByText('hello from them')).toBeInTheDocument() // the rest is untouched
+  })
+
+  it('keeps the message and says why when deleting fails', async () => {
+    const state = chat()
+    open('/messages/1', state)
+    await screen.findByText('my first message')
+    await userEvent.click(menuOf('my first message'))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Delete' }))
+    state.failNextChange = 'Message not available right now'
+    await userEvent.click(within(await screen.findByRole('dialog', { name: 'Delete this message?' })).getByRole('button', { name: 'Delete' }))
+
+    expect(await screen.findByText('Message not available right now')).toBeInTheDocument()
+    expect(screen.getByText('my first message')).toBeInTheDocument()
+  })
+
+  it('shows deleted messages from the other person as a note, from the start', async () => {
+    open('/messages/1', serve({ conversations: [conversation(1)], messages: { 1: [message(1, 'them', '', { deleted: true }), message(1, 'me', 'still here')] } }))
+    expect(await screen.findByText('This message was deleted')).toBeInTheDocument()
+    expect(screen.getByText('still here')).toBeInTheDocument()
+  })
+
+  it('an edit or delete pushed by the other person replaces the message instead of adding one', async () => {
+    const state = chat()
+    const { live } = open('/messages/1', state)
+    await screen.findByText('hello from them')
+    await waitFor(() => expect(live.subscribed(UPDATES)).toBe(1))
+    const theirs = state.messages[1][0]
+
+    Object.assign(theirs, { content: 'hello again, corrected', editedAt: new Date().toISOString() })
+    await live.push(UPDATES, { ...theirs })
+    expect(await screen.findByText('hello again, corrected')).toBeInTheDocument()
+    expect(screen.queryByText('hello from them')).not.toBeInTheDocument()
+    expect(screen.getAllByText(/^(hello again, corrected|my first message)$/)).toHaveLength(2) // no extra bubble
+    expect(screen.getByText(/· edited/)).toBeInTheDocument()
+
+    Object.assign(theirs, { content: '', deleted: true })
+    await live.push(UPDATES, { ...theirs })
+    expect(await screen.findByText('This message was deleted')).toBeInTheDocument()
+    expect(screen.queryByText('hello again, corrected')).not.toBeInTheDocument()
+  })
+
+  it('the inbox shows what became of the last message, and its unread count follows the deletion', async () => {
+    const state = serve({
+      conversations: [
+        conversation(1, dana, { unreadCount: 2, lastMessage: { id: 10, senderId: dana.id, content: 'second', createdAt: minutesAgo(1), deleted: false } }),
+        conversation(2, eli, { lastMessage: { id: 20, senderId: me.id, content: '', createdAt: minutesAgo(30), deleted: true } }),
+      ],
+    })
+    const { live } = open('/messages', state)
+    const rows = await screen.findAllByRole('link', { name: /Conversation with/ })
+    expect(rows[0]).toHaveAccessibleName('Conversation with Eli Eng')
+    expect(rows[0]).toHaveTextContent('You deleted a message')
+    await waitFor(() => expect(screen.getByTestId('badge')).toHaveTextContent('2'))
+    await waitFor(() => expect(live.subscribed(UPDATES)).toBe(1))
+
+    // Dana deletes her newest message: it no longer counts as unread, and the preview says so.
+    state.conversations = state.conversations.map((c) => (c.id === 1 ? { ...c, unreadCount: 1, lastMessage: { ...c.lastMessage!, content: '', deleted: true } } : c))
+    await live.push(UPDATES, message(1, 'them', '', { id: 10, deleted: true }))
+
+    await waitFor(() => expect(screen.getByRole('link', { name: 'Conversation with Dana Dev, 1 unread' })).toHaveTextContent('This message was deleted'))
+    await waitFor(() => expect(screen.getByTestId('badge')).toHaveTextContent('1'))
   })
 })

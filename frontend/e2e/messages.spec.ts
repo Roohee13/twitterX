@@ -1,8 +1,13 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Browser, type Page } from '@playwright/test'
 import { as, createUser, shot, signIn } from './support'
 
 const mainNav = (page: Page) => page.getByRole('navigation', { name: 'Main' })
 const messagesLink = (page: Page, name: string | RegExp = /^Messages/) => mainNav(page).getByRole('link', { name })
+async function signInAs(browser: Browser, user: Parameters<typeof signIn>[1], path: string) {
+  const page = await (await browser.newContext()).newPage()
+  await signIn(page, user, path)
+  return page
+}
 const box = (page: Page) => page.getByRole('textbox', { name: 'Message' })
 
 test.describe('messages', () => {
@@ -137,6 +142,106 @@ test.describe('messages', () => {
     await near('long sent')
   })
 
+  test('editing a message: the other person sees the new text with an "edited" mark at once, in the chat and in the inbox', async ({ browser, page, request }) => {
+    const ann = await createUser(request, { displayName: 'Ann Editor' })
+    const ben = await createUser(request, { displayName: 'Ben Reader' })
+    const { id } = await as(request, ann).startConversation(ben.username)
+    await as(request, ann).sendMessage(id, 'meet at 5pm')
+    await as(request, ben).sendMessage(id, 'ok, see you')
+    const benPage = await (await browser.newContext()).newPage()
+    await signIn(benPage, ben, `/messages/${id}`)
+    await expect(benPage.getByText('meet at 5pm')).toBeVisible()
+    await signIn(page, ann, `/messages/${id}`)
+    await expect(page.getByText('meet at 5pm')).toBeVisible()
+
+    // Only your own messages have the menu.
+    await expect(page.getByRole('button', { name: 'Message actions' })).toHaveCount(1)
+    await expect(benPage.getByRole('button', { name: 'Message actions' })).toHaveCount(1)
+    await page.getByText('meet at 5pm').hover()
+    await page.getByRole('button', { name: 'Message actions' }).click()
+    await page.getByRole('menuitem', { name: 'Edit' }).click()
+    const editor = page.getByRole('textbox', { name: 'Edit message' })
+    await expect(editor).toHaveValue('meet at 5pm')
+    await page.screenshot(shot('messages-editing'))
+    await editor.fill('meet at 6pm')
+    await editor.press('Enter')
+
+    await expect(page.getByText('meet at 6pm')).toBeVisible()
+    await expect(page.getByText(/· edited/)).toBeVisible()
+    await expect(page.getByRole('textbox', { name: 'Edit message' })).toHaveCount(0)
+    // Ben, with the chat open, sees it change in place: no second bubble, no reload.
+    await expect(benPage.getByText('meet at 6pm')).toBeVisible()
+    await expect(benPage.getByText('meet at 5pm')).toHaveCount(0)
+    await expect(benPage.getByText(/· edited/)).toBeVisible()
+    await benPage.screenshot(shot('messages-edited-seen'))
+
+    await page.reload()
+    await expect(page.getByText('meet at 6pm')).toBeVisible()
+    await expect(page.getByText(/· edited/)).toBeVisible()
+    // The inbox of someone who did not have the chat open shows the new wording too.
+    await as(request, ann).sendMessage(id, 'meet at 6pm, last word') // makes it the newest, so the preview is of this message
+    await benPage.goto('/messages')
+    await expect(benPage.getByRole('link', { name: /Conversation with Ann Editor/ })).toContainText('meet at 6pm, last word')
+  })
+
+  test('deleting a message: it becomes a note for both people at once, nothing of the text is left, and the unread count drops', async ({ browser, page, request }) => {
+    const ann = await createUser(request, { displayName: 'Ann Deleter' })
+    const ben = await createUser(request, { displayName: 'Ben Watcher' })
+    const { id } = await as(request, ann).startConversation(ben.username)
+    await as(request, ann).sendMessage(id, 'a message that should stay')
+    const benMessages = await signInAs(browser, ben, '/messages')
+    await expect(benMessages.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Messages (1 unread)' })).toBeVisible()
+
+    await signIn(page, ann, `/messages/${id}`)
+    await as(request, ann).sendMessage(id, 'oops, wrong chat')
+    await expect(page.getByText('oops, wrong chat')).toBeVisible()
+    await expect(benMessages.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Messages (2 unread)' })).toBeVisible()
+
+    await page.getByText('oops, wrong chat').hover()
+    await page.getByRole('button', { name: 'Message actions' }).last().click()
+    await page.getByRole('menuitem', { name: 'Delete' }).click()
+    await page.screenshot(shot('messages-delete-dialog'))
+    await page.getByRole('dialog', { name: 'Delete this message?' }).getByRole('button', { name: 'Delete' }).click()
+
+    await expect(page.getByText('You deleted this message')).toBeVisible()
+    await expect(page.getByText('oops, wrong chat')).toHaveCount(0)
+    await expect(page.getByText('a message that should stay')).toBeVisible()
+    // Ben's unread count went back down, and his inbox says what happened.
+    await expect(benMessages.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Messages (1 unread)' })).toBeVisible()
+    await expect(benMessages.getByRole('link', { name: /Conversation with Ann Deleter/ })).toContainText('This message was deleted')
+    await benMessages.screenshot(shot('messages-deleted-inbox'))
+    await benMessages.getByRole('link', { name: /Conversation with Ann Deleter/ }).click()
+    await expect(benMessages.getByText('This message was deleted', { exact: true })).toBeVisible()
+    await expect(benMessages.getByText('oops, wrong chat')).toHaveCount(0)
+    // Gone from the server too, not just hidden by the screen.
+    const stored = await as(request, ben).get(`/api/conversations/${id}/messages`)
+    expect(JSON.stringify(stored)).not.toContain('oops, wrong chat')
+  })
+
+  test('a deleted message cannot be edited, and the menu is there for the keyboard too', async ({ page, request }) => {
+    const ann = await createUser(request)
+    const ben = await createUser(request)
+    const { id } = await as(request, ann).startConversation(ben.username)
+    await as(request, ann).sendMessage(id, 'keyboard message')
+    await signIn(page, ann, `/messages/${id}`)
+    await expect(page.getByText('keyboard message')).toBeVisible()
+
+    const trigger = page.getByRole('button', { name: 'Message actions' })
+    await trigger.focus()
+    await expect(trigger).toBeVisible()
+    await page.keyboard.press('Enter')
+    await page.keyboard.press('Enter') // the first item: Edit
+    await expect(page.getByRole('textbox', { name: 'Edit message' })).toBeFocused()
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('textbox', { name: 'Edit message' })).toHaveCount(0)
+    await expect(page.getByText('keyboard message')).toBeVisible()
+
+    const messageId = (await as(request, ann).get(`/api/conversations/${id}/messages`)).items[0].id
+    await as(request, ann).deleteMessage(id, messageId)
+    const edit = await request.patch(`/api/conversations/${id}/messages/${messageId}`, { headers: { Authorization: `Bearer ${ann.accessToken}` }, data: { content: 'back again' } })
+    expect(edit.status()).toBe(409)
+  })
+
   test('a long conversation loads older messages on request', async ({ page, request }) => {
     const me = await createUser(request)
     const friend = await createUser(request, { displayName: 'Chatty Friend' })
@@ -196,7 +301,22 @@ test.describe('messages', () => {
 })
 
 test.describe('on a phone', () => {
-  test.use({ viewport: { width: 390, height: 780 } })
+  test.use({ viewport: { width: 390, height: 780 }, hasTouch: true, isMobile: true })
+
+  test('on a touch screen the edit / delete menu is shown without hovering', async ({ page, request }) => {
+    const me = await createUser(request)
+    const friend = await createUser(request)
+    const { id } = await as(request, me).startConversation(friend.username)
+    await as(request, me).sendMessage(id, 'tap my menu')
+    await signIn(page, me, `/messages/${id}`)
+    await expect(page.getByText('tap my menu')).toBeVisible()
+    const trigger = page.getByRole('button', { name: 'Message actions' })
+    await expect(trigger).toHaveCSS('opacity', '1')
+    await trigger.tap()
+    await expect(page.getByRole('menuitem', { name: 'Edit' })).toBeVisible()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    await page.screenshot(shot('messages-phone-menu'))
+  })
 
   test('the inbox and the chat fit the screen, with the writing box above the bottom bar', async ({ page, request }) => {
     const me = await createUser(request)

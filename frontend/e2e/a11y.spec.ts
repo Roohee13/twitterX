@@ -49,6 +49,10 @@ test.describe('signed in', () => {
     await as(request, friend).like((await as(request, me).post('my own post')).id)
     const conv = await as(request, friend).startConversation(me.username)
     await as(request, friend).sendMessage(conv.id, 'hello from Fran')
+    const mine = await as(request, me).sendMessage(conv.id, 'a message I will edit')
+    await request.patch(`/api/conversations/${conv.id}/messages/${mine.id}`, { headers: { Authorization: `Bearer ${me.accessToken}` }, data: { content: 'a message I edited' } })
+    const gone = await as(request, friend).sendMessage(conv.id, 'a message Fran deleted')
+    await as(request, friend).deleteMessage(conv.id, gone.id)
     await as(request, me).setProtected()
     const asker = await createUser(request, { displayName: 'Asking Alex' })
     await as(request, asker).requestFollow(me.username)
@@ -67,7 +71,7 @@ test.describe('signed in', () => {
       ['/bookmarks', 'bookmarks'],
       ['/notifications', 'notifications'],
       ['/messages', 'inbox'],
-      [`/messages/${conv.id}`, 'a chat'],
+      [`/messages/${conv.id}`, 'a chat with an edited and a deleted message'],
       ['/follow-requests', 'follow requests'],
       ['/settings', 'settings'],
     ] as const) {
@@ -108,6 +112,27 @@ test.describe('signed in', () => {
     await page.getByRole('button', { name: 'New post' }).first().click()
     await expect(page.getByRole('dialog')).toBeVisible()
     await expectAccessible(page, 'the compose dialog')
+    await page.keyboard.press('Escape')
+
+    // The edit / delete menu on a message, and the inline editor.
+    const other2 = await createUser(request)
+    const chat = await as(request, me).startConversation(other2.username)
+    await as(request, me).sendMessage(chat.id, 'message with a menu')
+    await page.goto(`/messages/${chat.id}`)
+    await ready(page)
+    await page.getByText('message with a menu').hover()
+    await page.getByRole('button', { name: 'Message actions' }).click()
+    await expect(page.getByRole('menu')).toBeVisible()
+    await expectAccessible(page, 'the message menu')
+    await page.getByRole('menuitem', { name: 'Edit' }).click()
+    await expect(page.getByRole('textbox', { name: 'Edit message' })).toBeVisible()
+    await expectAccessible(page, 'the message editor')
+    await page.keyboard.press('Escape')
+    await page.getByText('message with a menu').hover()
+    await page.getByRole('button', { name: 'Message actions' }).click()
+    await page.getByRole('menuitem', { name: 'Delete' }).click()
+    await expect(page.getByRole('dialog', { name: 'Delete this message?' })).toBeVisible()
+    await expectAccessible(page, 'the delete message dialog')
     await page.keyboard.press('Escape')
 
     await page.goto('/settings')
