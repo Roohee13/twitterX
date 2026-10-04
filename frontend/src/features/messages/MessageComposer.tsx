@@ -44,7 +44,7 @@ export function MessageComposer({ onSend }: { onSend: (content: string) => void 
         className="max-h-40 min-h-[44px] flex-1 resize-none rounded-2xl border border-zinc-700 bg-black px-4 py-2.5 focus:border-brand focus:outline-none"
       />
       {text.length > MAX - 200 && <span className={`pb-3 text-sm ${text.length >= MAX ? 'text-red-400' : 'text-zinc-500'}`}>{MAX - text.length}</span>}
-      <button type="submit" aria-label="Send message" disabled={!trimmed} className="mb-0.5 rounded-full bg-brand p-2.5 text-white hover:bg-brand-hover disabled:opacity-50">
+      <button type="submit" aria-label="Send message" disabled={!trimmed} className="mb-0.5 rounded-full bg-brand p-2.5 text-white hover:bg-brand-solid-hover disabled:opacity-50">
         <SendHorizontal size={20} />
       </button>
     </form>

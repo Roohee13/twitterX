@@ -1,8 +1,14 @@
 @import "tailwindcss";
 
 @theme {
+  /* Blue for text and icons on the black background (7:1). */
   --color-brand: #1d9bf0;
   --color-brand-hover: #1a8cd8;
+  /* The same blue, darkened, for backgrounds that carry white text (white on it is 5.2:1; on the light blue it is only 3:1). */
+  --color-brand-solid: #0b6fc2;
+  --color-brand-solid-hover: #0a62ab;
+  /* Secondary text. Tailwind's zinc-500 is 4.4:1 on black and 3.7:1 on the dark cards, below the 4.5:1 that WCAG AA asks for. */
+  --color-zinc-500: #8e8e99;
 }
 
 html,
@@ -23,5 +29,17 @@ body {
   :focus-visible {
     outline: 2px solid var(--color-brand);
     outline-offset: 2px;
+  }
+}
+
+/* People who ask their system for less motion get none: spinners and slide-ins stop, state changes are instant. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Bell, Bookmark, Feather, Home, LogOut, Mail, Search, Settings, ShieldAlert, User, UserCheck } from 'lucide-react'
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, NavLink, Outlet, useMatch, useNavigate } from 'react-router'
 import { Avatar } from '../../components/ui/Avatar'
 import { useAuth, useCurrentUser } from '../auth/AuthContext'
@@ -60,7 +60,7 @@ function NavItems({ vertical }: { vertical: boolean }) {
           <span className="relative">
             {item.icon}
             {item.badge ? (
-              <span aria-hidden="true" className="absolute -right-2 -top-1 min-w-[18px] rounded-full bg-brand px-1 text-center text-xs font-bold leading-[18px] text-white">
+              <span aria-hidden="true" className="absolute -right-2 -top-1 min-w-[18px] rounded-full bg-brand-solid px-1 text-center text-xs font-bold leading-[18px] text-white">
                 {item.badge > 99 ? '99+' : item.badge}
               </span>
             ) : null}
@@ -79,7 +79,7 @@ function PostButton() {
       type="button"
       onClick={() => compose()}
       aria-label="New post"
-      className="mt-3 flex items-center justify-center rounded-full bg-brand py-3 font-bold text-white hover:bg-brand-hover xl:w-full"
+      className="mt-3 flex items-center justify-center rounded-full bg-brand-solid py-3 font-bold text-white hover:bg-brand-solid-hover xl:w-full"
     >
       <Feather size={22} className="xl:hidden" />
       <span className="hidden xl:inline">Post</span>
@@ -99,7 +99,7 @@ function FloatingPostButton() {
       type="button"
       onClick={() => compose()}
       aria-label="New post"
-      className="fixed bottom-20 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-brand text-white shadow-lg hover:bg-brand-hover sm:hidden"
+      className="fixed bottom-20 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-brand-solid text-white shadow-lg hover:bg-brand-solid-hover sm:hidden"
     >
       <Feather size={24} />
     </button>
@@ -189,11 +189,29 @@ export function AppShell() {
   )
 }
 
+/** First thing a keyboard user reaches: jumps over the navigation straight to the page. */
+function SkipLink({ target }: { target: React.RefObject<HTMLElement | null> }) {
+  return (
+    <a
+      href="#main-content"
+      onClick={(event) => {
+        event.preventDefault()
+        target.current?.focus()
+      }}
+      className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:rounded-full focus:bg-brand-solid focus:px-4 focus:py-2 focus:font-semibold focus:text-white"
+    >
+      Skip to main content
+    </a>
+  )
+}
+
 function Shell() {
+  const main = useRef<HTMLElement>(null)
   useLiveNotifications()
   useLiveMessages()
   return (
     <div className="mx-auto flex min-h-screen max-w-[1265px] justify-center">
+      <SkipLink target={main} />
       <header className="sticky top-0 hidden h-screen w-[72px] shrink-0 flex-col px-2 py-2 sm:flex xl:w-[275px]">
         <Link to="/" aria-label="XClone home" className="mb-2 w-fit rounded-full p-3 text-3xl font-black text-white hover:bg-zinc-900">
           X
@@ -205,7 +223,7 @@ function Shell() {
         <UserCard />
       </header>
 
-      <main className="min-h-screen w-full max-w-[600px] border-zinc-800 pb-16 sm:border-x sm:pb-0">
+      <main id="main-content" ref={main} tabIndex={-1} className="min-h-screen w-full max-w-[600px] border-zinc-800 pb-16 focus:outline-none sm:border-x sm:pb-0">
         <VerificationBanner />
         <Outlet />
       </main>

@@ -8,6 +8,7 @@ import { api } from '../../lib/api'
 import { useCursorQuery } from '../../lib/queries'
 import type { PostResponse, TrendingHashtag, UserSummary } from '../../lib/types'
 import { useDebounced } from '../../lib/useDebounced'
+import { usePageTitle } from '../../lib/usePageTitle'
 import { PostCard, postKey } from '../posts/PostCard'
 import { UserRow } from '../profile/FollowListPage'
 import { WhoToFollow } from './WhoToFollow'
@@ -55,6 +56,7 @@ export function ExplorePage() {
   const [params, setParams] = useSearchParams()
   const typed = params.get('q') ?? ''
   const q = useDebounced(typed.trim(), 300) // what is actually searched; the box itself updates at once
+  usePageTitle(q ? `Search: ${q}` : 'Explore')
   const chosen = params.get('tab')
   const tab: Tab = chosen === 'posts' || chosen === 'people' ? chosen : typed.trim().startsWith('@') ? 'people' : 'posts'
 
@@ -67,6 +69,7 @@ export function ExplorePage() {
 
   return (
     <>
+      <h1 className="sr-only">Explore</h1>
       <div className="sticky top-0 z-10 border-b border-zinc-800 bg-black/80 px-4 py-2 backdrop-blur">
         <form role="search" onSubmit={(e) => e.preventDefault()} className="relative">
           <Search size={18} aria-hidden="true" className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" />

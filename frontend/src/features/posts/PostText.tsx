@@ -8,7 +8,8 @@ function shortUrl(url: string) {
   return bare.length > 30 ? `${bare.slice(0, 29)}…` : bare
 }
 
-const linkClass = 'text-brand hover:underline'
+// Underlined, because a link inside a sentence must not rely on its colour alone (the blue is only 2.5:1 against the text around it).
+const linkClass = 'text-brand underline decoration-1 underline-offset-2 hover:decoration-2'
 
 /** Post text with #hashtags, @mentions and web addresses turned into links. Everything is rendered as text, never as HTML. */
 export function PostText({ content, mentions, className = '' }: { content: string; mentions: UserSummary[]; className?: string }) {

@@ -22,7 +22,7 @@ first discuss the details, then I build it with tests, you review it, and only t
 ## How sign-in tokens are handled (the one part worth deciding carefully)
 
 The API returns `accessToken` and `refreshToken` in the response body (no cookies).
-- The access token is kept **in memory** only.
+- The access token is kept **in memory and in `sessionStorage`** (this tab only), so a reload does not need to spend the refresh token.
 - The refresh token is kept in **localStorage**. Simple, but readable by any script on the page, so the app must never render untrusted HTML.
 - On a `401` the client refreshes once, **single-flight** (all concurrent requests wait for the same refresh). This matters because
   the backend rotates refresh tokens and treats reuse of an old one as theft: it revokes every session. Two parallel refreshes would log the user out.
@@ -53,7 +53,7 @@ Each ends with a working, tested slice you can click through.
 | **5** | Notifications and real-time | Notifications page with unread badge, live updates over one shared STOMP connection (`lib/socket.ts`, reused by Messages), moderation notices; follow-request approve/deny lives on its own page, linked from the notification |
 | **6** | Messages | Inbox (preview + unread per conversation), chat thread with older messages on request, send with retry, live delivery over the shared socket, unread badge, Message button on profiles |
 | **7** | Settings | One `/settings` page: username, email, password (signs out everywhere), protected-account switch, blocked and muted lists with undo, deactivate (reversible) and delete (password + username typed). Linked from the sidebar and from your own profile |
-| **8** | Quality and deploy | Playwright flows (register, post, follow, DM), production build, deploy guide (static hosting + production CORS and R2 bucket CORS), final review |
+| **8** | Finishing and deploy | Accessibility (axe scan of every screen in CI, keyboard flow, page titles, skip link, reduced motion, AA contrast), route-level code splitting, a `frontend` and an `e2e` CI job, browser tests against the production build, [deploy guide](deploy.md) |
 
 ## Backend things the frontend will need (small, tracked here)
 

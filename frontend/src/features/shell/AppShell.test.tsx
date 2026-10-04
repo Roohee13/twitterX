@@ -79,6 +79,18 @@ describe('the app shell', () => {
     expect(within(mobile).getAllByRole('link').map((l) => l.getAttribute('aria-label'))).toEqual(['Home', 'Explore', 'Notifications', 'Messages', 'Bookmarks', 'Profile'])
   })
 
+  it('starts with a "Skip to main content" link that moves focus to the page', async () => {
+    open()
+    const skip = await screen.findByRole('link', { name: 'Skip to main content' })
+    // It is the first thing a keyboard user reaches, ahead of the navigation.
+    const first = screen.getAllByRole('link')[0]
+    expect(first).toBe(skip)
+
+    await userEvent.click(skip)
+
+    expect(screen.getByRole('main')).toHaveFocus()
+  })
+
   it('shows the Reports link to admins only', async () => {
     open('/', { admin: true })
     const nav = await screen.findByRole('navigation', { name: 'Main' })

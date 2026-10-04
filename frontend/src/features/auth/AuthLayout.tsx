@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react'
+import { usePageTitle } from '../../lib/usePageTitle'
 
 /** The centered card shared by login, register and the password / email screens. */
 export function AuthLayout({ title, children, footer }: { title: string; children: ReactNode; footer?: ReactNode }) {
+  usePageTitle(title)
   return (
     <div className="flex min-h-screen items-center justify-center px-4 py-10">
       <div className="w-full max-w-md">

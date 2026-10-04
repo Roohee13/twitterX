@@ -211,7 +211,9 @@ test.describe('password reset', () => {
     await login(page, user.username, 'brand-new-pass-1')
     await expect(page.getByText(user.displayName).first()).toBeVisible()
 
-    // Resetting the password signs the account out everywhere: the other browser's stored session is dead.
+    // Resetting the password signs the account out everywhere: the other browser's stored session is dead. (A tab that is already open keeps
+    // its short-lived access token until that runs out, at most 15 minutes, so this models a tab opened afterwards: it has no access token and must refresh.)
+    await otherPage.evaluate(() => sessionStorage.clear())
     await otherPage.reload()
     await expect(otherPage).toHaveURL(/\/login$/)
     await other.close()

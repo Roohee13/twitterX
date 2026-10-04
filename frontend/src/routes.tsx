@@ -1,11 +1,11 @@
 import { createBrowserRouter } from 'react-router'
+import { Spinner } from './components/ui/Spinner'
 import { ForgotPasswordPage } from './features/auth/ForgotPasswordPage'
 import { GuestOnly, RequireAuth } from './features/auth/guards'
 import { LoginPage } from './features/auth/LoginPage'
 import { RegisterPage } from './features/auth/RegisterPage'
 import { ResetPasswordPage } from './features/auth/ResetPasswordPage'
 import { VerifyEmailPage } from './features/auth/VerifyEmailPage'
-import { AdminReportsPage } from './features/admin/AdminReportsPage'
 import { BookmarksPage } from './features/bookmarks/BookmarksPage'
 import { ExplorePage } from './features/explore/ExplorePage'
 import { HashtagPage } from './features/explore/HashtagPage'
@@ -15,15 +15,15 @@ import { PostPage } from './features/posts/PostPage'
 import { FollowListPage } from './features/profile/FollowListPage'
 import { FollowRequestsPage } from './features/profile/FollowRequestsPage'
 import { ProfilePage } from './features/profile/ProfilePage'
-import { ChatPage } from './features/messages/ChatPage'
-import { MessagesPage } from './features/messages/MessagesPage'
 import { NotificationsPage } from './features/notifications/NotificationsPage'
-import { SettingsPage } from './features/settings/SettingsPage'
 import { NotFoundPage } from './features/shell/pages'
 
+// Pages most visitors open rarely (settings, admin) or that carry their own weight (messages) are loaded when first visited, so the
+// first screen downloads less.
 export const router = createBrowserRouter([
   {
     element: <RequireAuth />,
+    hydrateFallbackElement: <Spinner label="Loading" />,
     children: [
       {
         element: <AppShell />,
@@ -34,14 +34,14 @@ export const router = createBrowserRouter([
           { path: '/u/:username/followers', element: <FollowListPage kind="followers" /> },
           { path: '/u/:username/following', element: <FollowListPage kind="following" /> },
           { path: '/follow-requests', element: <FollowRequestsPage /> },
-          { path: '/settings', element: <SettingsPage /> },
-          { path: '/messages', element: <MessagesPage /> },
-          { path: '/messages/:id', element: <ChatPage /> },
+          { path: '/settings', lazy: () => import('./features/settings/SettingsPage').then((m) => ({ Component: m.SettingsPage })) },
+          { path: '/messages', lazy: () => import('./features/messages/MessagesPage').then((m) => ({ Component: m.MessagesPage })) },
+          { path: '/messages/:id', lazy: () => import('./features/messages/ChatPage').then((m) => ({ Component: m.ChatPage })) },
           { path: '/notifications', element: <NotificationsPage /> },
           { path: '/explore', element: <ExplorePage /> },
           { path: '/hashtag/:name', element: <HashtagPage /> },
           { path: '/bookmarks', element: <BookmarksPage /> },
-          { path: '/admin/reports', element: <AdminReportsPage /> },
+          { path: '/admin/reports', lazy: () => import('./features/admin/AdminReportsPage').then((m) => ({ Component: m.AdminReportsPage })) },
         ],
       },
     ],

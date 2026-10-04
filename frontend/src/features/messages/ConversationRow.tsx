@@ -24,7 +24,7 @@ export function ConversationRow({ conversation }: { conversation: ConversationRe
         </div>
         <p className={`truncate ${unreadCount ? 'font-semibold text-zinc-100' : 'text-zinc-500'}`}>{preview}</p>
       </div>
-      {unreadCount > 0 && <span aria-hidden="true" className="min-w-[22px] rounded-full bg-brand px-1.5 text-center text-sm font-bold leading-[22px] text-white">{unreadCount > 99 ? '99+' : unreadCount}</span>}
+      {unreadCount > 0 && <span aria-hidden="true" className="min-w-[22px] rounded-full bg-brand-solid px-1.5 text-center text-sm font-bold leading-[22px] text-white">{unreadCount > 99 ? '99+' : unreadCount}</span>}
     </Link>
   )
 }

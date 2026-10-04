@@ -13,7 +13,7 @@ test.describe('app foundation', () => {
     await expect(page.getByRole('heading', { name: "This page doesn't exist" })).toBeVisible()
   })
 
-  test('a returning user is restored after a reload, and the refresh token rotates', async ({ page, request }) => {
+  test('a returning user is restored after a reload; a reload spends no refresh token, a new tab does and the token rotates', async ({ page, request }) => {
     const user = await createUser(request)
     await signIn(page, user)
 
@@ -24,9 +24,16 @@ test.describe('app foundation', () => {
     const before = await page.evaluate(() => localStorage.getItem('xclone.refreshToken'))
     await page.reload()
     await expect(page.getByText(user.displayName).first()).toBeVisible()
+    // The tab still had a usable access token, so nothing had to be refreshed.
+    expect(await page.evaluate(() => localStorage.getItem('xclone.refreshToken'))).toBe(before)
+
+    // A new tab starts without one (sessionStorage is per tab): restoring the session spends the old refresh token and stores the new one.
+    await page.evaluate(() => sessionStorage.clear())
+    await page.reload()
+    await expect(page.getByText(user.displayName).first()).toBeVisible()
     const after = await page.evaluate(() => localStorage.getItem('xclone.refreshToken'))
     expect(after).not.toBeNull()
-    expect(after).not.toBe(before) // restoring the session spent the old refresh token and stored the new one
+    expect(after).not.toBe(before)
   })
 
   test('two tabs restoring the same session at once do not get it revoked', async ({ browser, request }) => {
@@ -37,6 +44,7 @@ test.describe('app foundation', () => {
     await expect(first.getByText(user.displayName).first()).toBeVisible()
     const second = await context.newPage()
     await second.goto('/')
+    await expect(second.getByText(user.displayName).first()).toBeVisible() // its own restore is finished, so nothing is cut off mid-flight below
 
     // Both tabs reload at the same moment: both need a refresh, and a reused token would revoke everything.
     await Promise.all([first.reload(), second.reload()])
@@ -46,6 +54,26 @@ test.describe('app foundation', () => {
     await expect(first).toHaveURL(/\/$/)
     await expect(second).toHaveURL(/\/$/)
     await context.close()
+  })
+
+  test('reloading again right away does not sign the user out of every device', async ({ page, request }) => {
+    // Each page load used to spend the refresh token. Reloading a second time before the first load had stored the new one made the
+    // backend see a used token, treat it as stolen and revoke all sessions. Now a reload keeps using the access token it already has.
+    const user = await createUser(request)
+    await signIn(page, user)
+    await expect(page.getByText(user.displayName).first()).toBeVisible()
+    for (let i = 0; i < 40; i++) {
+      await page.reload({ waitUntil: 'commit' })
+      await page.waitForTimeout(5 + (i % 12) * 5) // a different gap each time, from 5 to 60 ms
+      await page.reload({ waitUntil: 'commit' })
+      await page.waitForTimeout(250)
+      expect(page.url(), `signed out after reload pair ${i + 1}`).not.toContain('/login')
+    }
+    await expect(page.getByText(user.displayName).first()).toBeVisible()
+    // And the session really is intact on the server: the original refresh token chain still works from a second browser tab.
+    const second = await page.context().newPage()
+    await second.goto('/')
+    await expect(second.getByText(user.displayName).first()).toBeVisible()
   })
 
   test('logging out ends the session on the server too', async ({ page, request }) => {
