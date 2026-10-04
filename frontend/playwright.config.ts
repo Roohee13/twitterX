@@ -8,6 +8,8 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: 0,
+  // The full run takes several minutes on a busy laptop, so a screen can take longer to settle than the 5 s default.
+  expect: { timeout: 10_000 },
   reporter: [['list']],
   use: {
     // 127.0.0.1, not localhost: Playwright's API client waits ~4 s per request on "localhost" here (the dev server listens on IPv4 only).

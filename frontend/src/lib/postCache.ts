@@ -63,8 +63,13 @@ export function removePost(queryClient: QueryClient, id: number) {
   queryClient.removeQueries({ queryKey: ['post', id] })
 }
 
-/** Puts new top-level posts at the top of the loaded home timeline (newest first); nothing happens if it is not loaded. */
+/** Puts new top-level posts at the top of the loaded home timeline (newest first). If the timeline is still loading it is reloaded instead. */
 export function prependToTimeline(queryClient: QueryClient, posts: PostResponse[]) {
+  // Not loaded yet (or still loading): there is nothing to add to, and the answer on its way may not contain the new post. A refetch
+  // asked for during a first load is merged into that load, so cancel it first and start again.
+  if (!queryClient.getQueryData(['timeline'])) {
+    void queryClient.cancelQueries({ queryKey: ['timeline'] }).then(() => queryClient.invalidateQueries({ queryKey: ['timeline'] }))
+  }
   queryClient.setQueryData<{ pages: Array<CursorPage<PostResponse>>; pageParams: unknown[] }>(['timeline'], (old) => {
     if (!old || old.pages.length === 0) return old
     const [first, ...rest] = old.pages

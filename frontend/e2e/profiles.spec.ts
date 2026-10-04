@@ -56,7 +56,7 @@ test.describe('the profile page', () => {
 
     await expect(page).toHaveURL(new RegExp(`/u/${user.username}$`))
     await expect(page.getByRole('button', { name: 'Edit profile' })).toBeVisible()
-    await expect(page.getByRole('button', { name: /^Follow/ })).toHaveCount(0)
+    await expect(page.locator('main').getByRole('button', { name: /^Follow/ })).toHaveCount(0) // (the side panel has Follow buttons of its own)
     await expect(page.getByText("You haven't posted yet")).toBeVisible()
   })
 

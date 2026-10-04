@@ -1,11 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
-import { Feather, Home, LogOut, User, UserCheck } from 'lucide-react'
-import type { ReactNode } from 'react'
-import { Link, NavLink, Outlet, useMatch } from 'react-router'
+import { Bookmark, Feather, Home, LogOut, Search, User, UserCheck } from 'lucide-react'
+import { useState, type FormEvent, type ReactNode } from 'react'
+import { Link, NavLink, Outlet, useMatch, useNavigate } from 'react-router'
 import { Avatar } from '../../components/ui/Avatar'
 import { useAuth, useCurrentUser } from '../auth/AuthContext'
 import { VerificationBanner } from '../auth/VerificationBanner'
 import { ComposeProvider, useCompose } from '../compose/ComposeContext'
+import { WhoToFollow } from '../explore/WhoToFollow'
 import { api } from '../../lib/api'
 import type { TrendingHashtag } from '../../lib/types'
 
@@ -20,6 +21,8 @@ function useNavItems(): NavItem[] {
   const user = useCurrentUser()
   return [
     { to: '/', label: 'Home', icon: <Home size={26} /> },
+    { to: '/explore', label: 'Explore', icon: <Search size={26} /> },
+    { to: '/bookmarks', label: 'Bookmarks', icon: <Bookmark size={26} /> },
     { to: `/u/${user.username}`, label: 'Profile', icon: <User size={26} /> },
     // Only protected accounts have follow requests to answer.
     ...(user.protectedAccount ? [{ to: '/follow-requests', label: 'Follow requests', icon: <UserCheck size={26} /> }] : []),
@@ -112,13 +115,44 @@ function TrendsPanel() {
       {trends.isPending && <p className="px-4 py-2 text-zinc-500">Loading…</p>}
       {trends.isError && <p className="px-4 py-2 text-zinc-500">Trends are unavailable right now.</p>}
       {trends.data?.length === 0 && <p className="px-4 py-2 text-zinc-500">Nothing is trending yet.</p>}
-      {trends.data?.map((tag) => (
+      {trends.data?.slice(0, 5).map((tag) => (
         <Link key={tag.name} to={`/hashtag/${tag.name}`} className="block px-4 py-2 hover:bg-zinc-800">
           <p className="font-bold">#{tag.name}</p>
           <p className="text-sm text-zinc-500">{tag.postCount} {tag.postCount === 1 ? 'post' : 'posts'}</p>
         </Link>
       ))}
+      {trends.data && trends.data.length > 0 && <Link to="/explore" className="block px-4 pt-2 text-brand hover:underline">Show more</Link>}
     </section>
+  )
+}
+
+/** The small search box in the right column: pressing Enter opens Explore with the search filled in. */
+function SearchBox() {
+  const navigate = useNavigate()
+  const [value, setValue] = useState('')
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    const q = value.trim()
+    if (q) navigate(`/explore?q=${encodeURIComponent(q)}`)
+  }
+  return (
+    <form role="search" onSubmit={submit} className="relative">
+      <Search size={16} aria-hidden="true" className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" />
+      <input type="search" aria-label="Search XClone" placeholder="Search" maxLength={100} value={value} onChange={(e) => setValue(e.target.value)} className="w-full rounded-full bg-zinc-900 py-2.5 pl-10 pr-4 text-[15px] placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-brand" />
+    </form>
+  )
+}
+
+function RightColumn() {
+  const onExplore = useMatch('/explore')
+  return (
+    <aside className="hidden w-[350px] shrink-0 flex-col gap-4 px-6 py-3 lg:flex">
+      {!onExplore && <SearchBox />}
+      <TrendsPanel />
+      <WhoToFollow limit={3}>
+        <Link to="/explore" className="block px-4 pt-2 text-brand hover:underline">Show more</Link>
+      </WhoToFollow>
+    </aside>
   )
 }
 
@@ -151,9 +185,7 @@ function Shell() {
       </main>
       <FloatingPostButton />
 
-      <aside className="hidden w-[350px] shrink-0 flex-col gap-4 px-6 py-3 lg:flex">
-        <TrendsPanel />
-      </aside>
+      <RightColumn />
 
       <nav aria-label="Main (mobile)" className="fixed inset-x-0 bottom-0 z-40 flex border-t border-zinc-800 bg-black sm:hidden">
         <NavItems vertical={false} />

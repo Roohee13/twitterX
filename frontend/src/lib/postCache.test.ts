@@ -1,5 +1,5 @@
-import { QueryClient } from '@tanstack/react-query'
-import { describe, expect, it } from 'vitest'
+import { QueryClient, QueryObserver } from '@tanstack/react-query'
+import { describe, expect, it, vi } from 'vitest'
 import { makePost, makeUser } from '../test/fixtures'
 import { patchPost, prependToTimeline, removePost } from './postCache'
 import type { PostResponse } from './types'
@@ -63,9 +63,30 @@ describe('post cache helpers', () => {
     expect(qc.getQueryData<ReturnType<typeof infinite>>(['timeline'])!.pages[0].items.map((p) => p.id)).toEqual([3, 2, 1])
   })
 
-  it('does nothing when the timeline has not been loaded', () => {
+  it('does nothing to a timeline that is not in use', () => {
     const qc = new QueryClient()
     prependToTimeline(qc, [makePost({ id: 1 })])
     expect(qc.getQueryData(['timeline'])).toBeUndefined()
+  })
+
+  it('makes a timeline that is still loading start over, so a post made meanwhile is not lost', async () => {
+    const qc = new QueryClient()
+    const post = makePost({ id: 9, content: 'posted while loading' })
+    let fetches = 0
+    // The server's first answer was prepared before the post existed; the second one includes it.
+    const queryFn = async () => {
+      fetches += 1
+      const mine = fetches
+      await new Promise((r) => setTimeout(r, 30))
+      return infinite(...(mine === 1 ? [] : [post]))
+    }
+    const observer = new QueryObserver(qc, { queryKey: ['timeline'], queryFn }) // the home page is looking at the timeline
+    const unsubscribe = observer.subscribe(() => undefined)
+
+    prependToTimeline(qc, [post]) // the user posts before the first answer arrives
+    await vi.waitFor(() => expect(qc.getQueryData<ReturnType<typeof infinite>>(['timeline'])?.pages[0].items.map((p) => p.id)).toEqual([9]))
+    unsubscribe()
+
+    expect(fetches).toBe(2)
   })
 })

@@ -65,7 +65,13 @@ export function usePostActions() {
           post, 'bookmark',
           (p) => ({ ...p, bookmarkedByMe: adding }),
           (p) => ({ ...p, bookmarkedByMe: !adding }),
-          () => (adding ? api.post(`/api/posts/${post.id}/bookmark`) : api.delete(`/api/posts/${post.id}/bookmark`)),
+          async () => {
+            try {
+              await (adding ? api.post(`/api/posts/${post.id}/bookmark`) : api.delete(`/api/posts/${post.id}/bookmark`))
+            } finally {
+              void queryClient.invalidateQueries({ queryKey: ['bookmarks'] }) // the list on the Bookmarks page changed
+            }
+          },
           'Could not update your bookmark.',
           true,
         )

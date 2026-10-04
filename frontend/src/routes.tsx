@@ -5,6 +5,9 @@ import { LoginPage } from './features/auth/LoginPage'
 import { RegisterPage } from './features/auth/RegisterPage'
 import { ResetPasswordPage } from './features/auth/ResetPasswordPage'
 import { VerifyEmailPage } from './features/auth/VerifyEmailPage'
+import { BookmarksPage } from './features/bookmarks/BookmarksPage'
+import { ExplorePage } from './features/explore/ExplorePage'
+import { HashtagPage } from './features/explore/HashtagPage'
 import { AppShell } from './features/shell/AppShell'
 import { HomePage } from './features/home/HomePage'
 import { PostPage } from './features/posts/PostPage'
@@ -26,6 +29,9 @@ export const router = createBrowserRouter([
           { path: '/u/:username/followers', element: <FollowListPage kind="followers" /> },
           { path: '/u/:username/following', element: <FollowListPage kind="following" /> },
           { path: '/follow-requests', element: <FollowRequestsPage /> },
+          { path: '/explore', element: <ExplorePage /> },
+          { path: '/hashtag/:name', element: <HashtagPage /> },
+          { path: '/bookmarks', element: <BookmarksPage /> },
         ],
       },
     ],

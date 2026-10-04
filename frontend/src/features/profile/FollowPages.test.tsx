@@ -125,7 +125,7 @@ describe('follow requests', () => {
 
 describe('navigation', () => {
   const shell = (user = {}) => {
-    server.use(http.get(`${BASE}/api/trending/hashtags`, () => HttpResponse.json([])))
+    server.use(http.get(`${BASE}/api/trending/hashtags`, () => HttpResponse.json([])), http.get(`${BASE}/api/users/suggestions`, () => HttpResponse.json([])))
     return renderSignedIn(<Routes><Route element={<AppShell />}><Route path="/" element={<p>home</p>} /></Route></Routes>, { user })
   }
 

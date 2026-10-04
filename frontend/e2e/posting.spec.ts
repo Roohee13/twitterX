@@ -27,6 +27,25 @@ test.describe('writing posts', () => {
     await expect(page.getByRole('article').first()).toContainText('my very first post')
   })
 
+  test('a post made while the timeline is still loading is not lost', async ({ page, request }) => {
+    const user = await createUser(request)
+    // The server answers with the timeline as it was BEFORE the new post, but the page only receives that answer a moment later,
+    // just as it would on a slow connection.
+    await page.route('**/api/timeline*', async (route) => {
+      const stale = await route.fetch()
+      await new Promise((resolve) => setTimeout(resolve, 2000))
+      await route.fulfill({ response: stale })
+    })
+    await signIn(page, user)
+
+    await inlineComposer(page).fill('posted before the timeline arrived')
+    await page.getByRole('button', { name: 'Post', exact: true }).click()
+    await expect(page.getByText('Your post was sent.')).toBeVisible()
+
+    await expect(page.getByRole('article').first()).toContainText('posted before the timeline arrived')
+    await expect(page.getByText('Welcome to XClone')).toHaveCount(0)
+  })
+
   test('the Post button in the navigation opens a dialog that posts and closes', async ({ page, request }) => {
     const user = await createUser(request)
     await signIn(page, user)
@@ -113,6 +132,9 @@ test.describe('images', () => {
       })
     })
     await signIn(page, user)
+    // The post below exists only in this test's fake server reply, so the real timeline must have finished loading first
+    // (otherwise it reloads from the real server, which has never seen the fake post).
+    await expect(page.getByText('Welcome to XClone')).toBeVisible()
 
     await page.getByLabel('Choose images').setInputFiles([
       { name: 'one.png', mimeType: 'image/png', buffer: PNG },

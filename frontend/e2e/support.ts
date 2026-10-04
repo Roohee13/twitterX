@@ -84,3 +84,14 @@ export function as(request: APIRequestContext, user: Pick<TestUser, 'accessToken
     approve: (username: string) => run('post', `/api/users/me/follow-requests/${username}/approve`),
   }
 }
+
+/**
+ * A fresh login for an existing user. A refresh token can only be used once (the backend treats reuse as theft), so a second browser
+ * for the same person needs its own login instead of the token from registration.
+ */
+export async function loginViaApi(request: APIRequestContext, user: TestUser): Promise<TestUser> {
+  const res = await request.post('/api/auth/login', { data: { usernameOrEmail: user.username, password: user.password } })
+  if (!res.ok()) throw new Error(`login failed: ${res.status()} ${await res.text()}`)
+  const data = await res.json()
+  return { ...user, accessToken: data.accessToken, refreshToken: data.refreshToken }
+}
