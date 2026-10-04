@@ -41,6 +41,103 @@ jobs:
       - name: Build and test
         run: ./mvnw -B verify
 
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Unit tests
+        run: npm test
+      - name: Type-check and build
+        run: npm run build
+
+  # Browser tests: the real backend (jar) on a scratch database, the Vite dev server, and Chromium.
+  e2e:
+    runs-on: ubuntu-latest
+    needs: [test, frontend]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: xclone_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: maven
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build the backend
+        run: ./mvnw -B -q package -DskipTests
+      - name: Start the backend
+        # Same settings as frontend/scripts/e2e-backend.sh. The tests read the emailed links from this log.
+        run: |
+          mkdir -p frontend/e2e
+          DB_URL=jdbc:postgresql://localhost:5432/xclone_e2e \
+          JWT_SECRET="$(openssl rand -hex 32)" \
+          RATE_LIMIT_ENABLED=false \
+          FRONTEND_URL=http://localhost:5174 \
+          CORS_ALLOWED_ORIGINS=http://localhost:5174,http://127.0.0.1:5174 \
+          PORT=8090 \
+          nohup java -jar target/Xclone-backend-0.0.1-SNAPSHOT.jar > frontend/e2e/backend.log 2>&1 &
+          for i in $(seq 1 60); do
+            code="$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8090/api/admin/reports/users || true)"
+            [ "$code" = "401" ] && exit 0
+            sleep 2
+          done
+          echo "backend did not start"; tail -50 frontend/e2e/backend.log; exit 1
+      - run: npm ci
+        working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - name: Browser tests
+        working-directory: frontend
+        run: |
+          psql --version   # the admin specs promote a test user with one psql update
+          npx playwright test
+      - name: Keep the evidence when something fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results
+          path: |
+            frontend/e2e/results
+            frontend/e2e/backend.log
+          retention-days: 7
+
   docker:
     runs-on: ubuntu-latest
     needs: test

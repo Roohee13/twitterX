@@ -82,6 +82,8 @@ Run the tests with `./mvnw test`. They need the `xclone_test` database, and R2 i
 
 ## Docker and CI
 
+Deploying the whole thing (backend image, static frontend, CORS, R2, a post-deploy checklist): see [docs/deploy.md](docs/deploy.md).
+
 ```bash
 docker build -t xclone-backend .
 docker run -p 8080:8080 --env-file .env xclone-backend   # JWT_SECRET is required; see .env.example
