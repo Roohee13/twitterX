@@ -15,6 +15,8 @@ import { PostPage } from './features/posts/PostPage'
 import { FollowListPage } from './features/profile/FollowListPage'
 import { FollowRequestsPage } from './features/profile/FollowRequestsPage'
 import { ProfilePage } from './features/profile/ProfilePage'
+import { ChatPage } from './features/messages/ChatPage'
+import { MessagesPage } from './features/messages/MessagesPage'
 import { NotificationsPage } from './features/notifications/NotificationsPage'
 import { NotFoundPage } from './features/shell/pages'
 
@@ -31,6 +33,8 @@ export const router = createBrowserRouter([
           { path: '/u/:username/followers', element: <FollowListPage kind="followers" /> },
           { path: '/u/:username/following', element: <FollowListPage kind="following" /> },
           { path: '/follow-requests', element: <FollowRequestsPage /> },
+          { path: '/messages', element: <MessagesPage /> },
+          { path: '/messages/:id', element: <ChatPage /> },
           { path: '/notifications', element: <NotificationsPage /> },
           { path: '/explore', element: <ExplorePage /> },
           { path: '/hashtag/:name', element: <HashtagPage /> },

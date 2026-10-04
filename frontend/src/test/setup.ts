@@ -27,6 +27,9 @@ class IdleWebSocket {
   send() {}
 }
 
+// jsdom does not scroll.
+Element.prototype.scrollIntoView ??= function scrollIntoView() {}
+
 beforeEach(() => {
   vi.stubGlobal('WebSocket', IdleWebSocket)
   URL.createObjectURL = vi.fn(() => 'blob:preview')

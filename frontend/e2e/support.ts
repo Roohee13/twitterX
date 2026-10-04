@@ -81,6 +81,8 @@ export function as(request: APIRequestContext, user: Pick<TestUser, 'accessToken
     setProtected: () => run('patch', '/api/users/me', { protectedAccount: true }),
     reportPost: (postId: number, reason = 'SPAM') => run('post', `/api/posts/${postId}/report`, { reason }),
     reportUser: (username: string, reason = 'SPAM') => run('post', `/api/users/${username}/report`, { reason }),
+    startConversation: (username: string) => run('post', '/api/conversations', { username }),
+    sendMessage: (conversationId: number, content: string) => run('post', `/api/conversations/${conversationId}/messages`, { content }),
     updateProfile: (data: Record<string, unknown>) => run('patch', '/api/users/me', data),
     requestFollow: (username: string) => run('post', `/api/users/${username}/follow`),
     approve: (username: string) => run('post', `/api/users/me/follow-requests/${username}/approve`),

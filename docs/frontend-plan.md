@@ -51,7 +51,7 @@ Each ends with a working, tested slice you can click through.
 | **3** | Profiles and people | Profile page (posts / replies / likes tabs), edit profile with avatar and banner, follow / unfollow, followers and following lists, block and mute, protected-account behavior (lock icon, "requested", 403 screens) |
 | **4** | Discovery | Search (people and posts), hashtag page, trending, who-to-follow, bookmarks |
 | **5** | Notifications and real-time | Notifications page with unread badge, live updates over one shared STOMP connection (`lib/socket.ts`, reused by Messages), moderation notices; follow-request approve/deny lives on its own page, linked from the notification |
-| **6** | Messages | Conversation list, chat thread, live delivery, unread counts |
+| **6** | Messages | Inbox (preview + unread per conversation), chat thread with older messages on request, send with retry, live delivery over the shared socket, unread badge, Message button on profiles |
 | **7** | Settings and polish | Account settings (username, email, password, deactivate, delete, protection toggle), muted and blocked lists, empty/loading/error states, rate-limit messages, keyboard and screen-reader basics, mobile layout |
 | **8** | Quality and deploy | Playwright flows (register, post, follow, DM), production build, deploy guide (static hosting + production CORS and R2 bucket CORS), final review |
 

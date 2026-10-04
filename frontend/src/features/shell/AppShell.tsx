@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Bell, Bookmark, Feather, Home, LogOut, Search, ShieldAlert, User, UserCheck } from 'lucide-react'
+import { Bell, Bookmark, Feather, Home, LogOut, Mail, Search, ShieldAlert, User, UserCheck } from 'lucide-react'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { Link, NavLink, Outlet, useMatch, useNavigate } from 'react-router'
 import { Avatar } from '../../components/ui/Avatar'
@@ -7,6 +7,7 @@ import { useAuth, useCurrentUser } from '../auth/AuthContext'
 import { VerificationBanner } from '../auth/VerificationBanner'
 import { ComposeProvider, useCompose } from '../compose/ComposeContext'
 import { WhoToFollow } from '../explore/WhoToFollow'
+import { useLiveMessages, useUnreadMessages } from '../messages/messageHooks'
 import { LiveSocketProvider } from '../notifications/LiveSocketProvider'
 import { useLiveNotifications, useUnreadCount } from '../notifications/notificationHooks'
 import { api } from '../../lib/api'
@@ -24,10 +25,12 @@ interface NavItem {
 function useNavItems(): NavItem[] {
   const user = useCurrentUser()
   const unread = useUnreadCount().data ?? 0
+  const unreadMessages = useUnreadMessages().data ?? 0
   return [
     { to: '/', label: 'Home', icon: <Home size={26} /> },
     { to: '/explore', label: 'Explore', icon: <Search size={26} /> },
     { to: '/notifications', label: 'Notifications', icon: <Bell size={26} />, badge: unread },
+    { to: '/messages', label: 'Messages', icon: <Mail size={26} />, badge: unreadMessages },
     { to: '/bookmarks', label: 'Bookmarks', icon: <Bookmark size={26} /> },
     { to: `/u/${user.username}`, label: 'Profile', icon: <User size={26} /> },
     // Only protected accounts have follow requests to answer.
@@ -81,12 +84,13 @@ function PostButton() {
   )
 }
 
-/** Phones have no room for the sidebar button. Pages with a composer of their own (home, a post) hide this so it never covers their Post button. */
+/** Phones have no room for the sidebar button. Pages with a composer of their own (home, a post, a chat) hide this so it never covers their Post button. */
 function FloatingPostButton() {
   const compose = useCompose()
   const onHome = useMatch('/')
   const onPost = useMatch('/post/:id') // hooks must always run, so no `??` between them
-  if (onHome || onPost) return null
+  const onChat = useMatch('/messages/:id') // its writing box is where the button would sit
+  if (onHome || onPost || onChat) return null
   return (
     <button
       type="button"
@@ -184,6 +188,7 @@ export function AppShell() {
 
 function Shell() {
   useLiveNotifications()
+  useLiveMessages()
   return (
     <div className="mx-auto flex min-h-screen max-w-[1265px] justify-center">
       <header className="sticky top-0 hidden h-screen w-[72px] shrink-0 flex-col px-2 py-2 sm:flex xl:w-[275px]">

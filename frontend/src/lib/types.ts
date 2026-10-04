@@ -92,11 +92,22 @@ export interface NotificationResponse {
   createdAt: string
 }
 
+export interface LastMessage {
+  id: number
+  senderId: number
+  content: string
+  createdAt: string
+}
+
 export interface ConversationResponse {
   id: number
   participant: UserSummary
   createdAt: string
   updatedAt: string
+  /** Null while nobody has written yet. */
+  lastMessage: LastMessage | null
+  /** The other person's messages that you have not read. */
+  unreadCount: number
 }
 
 export interface MessageResponse {

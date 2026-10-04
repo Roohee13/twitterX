@@ -1,9 +1,11 @@
-import { CalendarDays, Lock } from 'lucide-react'
+import { CalendarDays, Lock, Mail } from 'lucide-react'
+import { useState } from 'react'
 import { Link } from 'react-router'
 import { Avatar } from '../../components/ui/Avatar'
 import { Button } from '../../components/ui/Button'
 import type { ProfileResponse } from '../../lib/types'
 import { useCurrentUser } from '../auth/AuthContext'
+import { useStartConversation } from '../messages/messageHooks'
 import { PostText } from '../posts/PostText'
 import { FollowButton } from './FollowButton'
 import { ProfileMenu } from './ProfileMenu'
@@ -15,6 +17,8 @@ export function ProfileHeader({ profile, onEdit }: { profile: ProfileResponse; o
   const me = useCurrentUser()
   const own = me.id === profile.id
   const base = `/u/${profile.username}`
+  const startConversation = useStartConversation()
+  const [opening, setOpening] = useState(false)
 
   return (
     <header>
@@ -30,6 +34,21 @@ export function ProfileHeader({ profile, onEdit }: { profile: ProfileResponse; o
             ) : (
               <>
                 <ProfileMenu profile={profile} />
+                {!profile.blockedByMe && (
+                  <button
+                    type="button"
+                    aria-label={`Message ${profile.displayName}`}
+                    title="Message"
+                    disabled={opening}
+                    onClick={() => {
+                      setOpening(true)
+                      void startConversation(profile.username).finally(() => setOpening(false))
+                    }}
+                    className="rounded-full border border-zinc-600 p-2 hover:bg-zinc-900 disabled:opacity-50"
+                  >
+                    <Mail size={20} />
+                  </button>
+                )}
                 <FollowButton profile={profile} />
               </>
             )}

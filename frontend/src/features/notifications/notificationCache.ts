@@ -38,6 +38,11 @@ export async function addPushed(queryClient: QueryClient, notification: Notifica
   void queryClient.invalidateQueries({ queryKey: NOTIFICATIONS_KEY })
 }
 
+/** Reads that were cancelled before they had any data (a first load) would stay empty for good, so they start again. */
+function reviveEmpty(queryClient: QueryClient) {
+  void queryClient.invalidateQueries({ queryKey: NOTIFICATIONS_KEY, predicate: (q) => q.state.data === undefined })
+}
+
 /**
  * The three changes below are made by the user and shown at once. A read of the same data already on its way (for instance the
  * catch-up after the socket connected) was answered before the change, and would put the old state back when it arrives, so it is
@@ -52,12 +57,14 @@ export async function markReadLocally(queryClient: QueryClient, id: number) {
     return { ...n, read: true }
   }))
   if (wasUnread) addToCount(queryClient, -1)
+  reviveEmpty(queryClient)
 }
 
 export async function markAllReadLocally(queryClient: QueryClient) {
   await queryClient.cancelQueries({ queryKey: NOTIFICATIONS_KEY })
   mapItems(queryClient, (items) => items.map((n) => ({ ...n, read: true })))
   queryClient.setQueryData<{ count: number }>(UNREAD_COUNT_KEY, (old) => (old ? { count: 0 } : old))
+  reviveEmpty(queryClient)
 }
 
 export async function removeLocally(queryClient: QueryClient, id: number) {
@@ -68,4 +75,5 @@ export async function removeLocally(queryClient: QueryClient, id: number) {
     return n.id !== id
   }))
   if (wasUnread) addToCount(queryClient, -1)
+  reviveEmpty(queryClient)
 }

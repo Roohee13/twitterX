@@ -59,6 +59,7 @@ src/features/     auth (context, guards, login, register, verify-email, password
                   posts (card, actions, menu and dialogs, post page), compose (composer, image upload, dialog), home (timeline);
                   profile (profile page and tabs, follow/mute/block, edit profile, follower lists, follow requests),
                   explore (search, trending, hashtag page, who to follow), bookmarks, notifications (page, unread badge, live push over one shared STOMP socket in lib/socket.ts),
+                  messages (inbox, chat, new message, live delivery and unread badge; sends go over REST, one at a time),
                   admin (report review, remove post, suspend or remove account); more are added per step
 e2e/              Playwright specs and helpers
 ```
