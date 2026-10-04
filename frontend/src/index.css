@@ -1,7 +1,15 @@
 @import "tailwindcss";
 
+/*
+ * Two themes, one set of class names. Components use Tailwind's colour names (zinc-800, black, red-300 ...) and Tailwind turns each of
+ * them into a CSS variable, so a theme is just a different set of values for those variables:
+ *  - dark is the default set below (the original look);
+ *  - light, further down, mirrors the grey scale (zinc-900 becomes the lightest grey, zinc-100 the darkest) and darkens the coloured text.
+ * `data-theme` on <html> picks one. It is set before the first paint by public/theme-init.js and changed by src/lib/theme.ts.
+ * Contrast is checked in both themes by e2e/a11y.spec.ts, so a value here must keep text at 4.5:1 or better.
+ */
 @theme {
-  /* Blue for text and icons on the black background (7:1). */
+  /* Blue for text and icons on the page background (7:1 on black). */
   --color-brand: #1d9bf0;
   --color-brand-hover: #1a8cd8;
   /* The same blue, darkened, for backgrounds that carry white text (white on it is 5.2:1; on the light blue it is only 3:1). */
@@ -9,6 +17,45 @@
   --color-brand-solid-hover: #0a62ab;
   /* Secondary text. Tailwind's zinc-500 is 4.4:1 on black and 3.7:1 on the dark cards, below the 4.5:1 that WCAG AA asks for. */
   --color-zinc-500: #8e8e99;
+  /* A faint wash over a row under the pointer. */
+  --color-hover: rgb(255 255 255 / 0.03);
+  /* Page text and background (the body). */
+  --color-page: #000000;
+  --color-page-text: #e7e9ea;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --color-black: #ffffff; /* page and surface background */
+  --color-page: #ffffff;
+  --color-page-text: #0f1419;
+  --color-hover: rgb(0 0 0 / 0.04);
+  --color-zinc-900: #f4f4f5; /* cards, hovered buttons */
+  --color-zinc-800: #e4e4e7; /* borders, avatars, dividers */
+  --color-zinc-700: #d4d4d8; /* input borders */
+  --color-zinc-600: #a1a1aa;
+  --color-zinc-500: #5f5f6b; /* secondary text: 6:1 on white, 5.4:1 on the cards */
+  --color-zinc-400: #4b4b55;
+  --color-zinc-300: #34343c;
+  --color-zinc-200: #26262c;
+  --color-zinc-100: #111114; /* primary text */
+  /* Blue text and links need the darker blue on white. */
+  --color-brand: #0b6fc2;
+  --color-brand-hover: #095ca0;
+  /* Coloured text written for a dark page is too pale on a light one. */
+  --color-red-300: #b91c1c;
+  --color-red-400: #c81e1e;
+  --color-red-500: #dc2626;
+  --color-green-300: #166534;
+  --color-green-500: #15803d;
+  --color-amber-200: #78350f;
+  --color-amber-300: #92400e;
+  --color-amber-400: #b45309;
+  --color-pink-500: #be185d;
 }
 
 html,
@@ -18,8 +65,8 @@ body,
 }
 
 body {
-  background: #000;
-  color: #e7e9ea;
+  background: var(--color-page);
+  color: var(--color-page-text);
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
 }

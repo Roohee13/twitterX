@@ -7,6 +7,10 @@ import { as, createUser, setAdmin, signIn } from './support'
 // replace trying the app with a keyboard and a screen reader, but it keeps the basics from slipping back.
 
 async function expectAccessible(page: Page, what: string) {
+  const expected = await page.evaluate(() => (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'))
+  await expect(page.locator('html'), `the ${expected} theme should be showing on ${what}`).toHaveAttribute('data-theme', expected)
+  const background = await page.evaluate(() => getComputedStyle(document.body).backgroundColor)
+  expect(background, `page background on ${what}`).toBe(expected === 'light' ? 'rgb(255, 255, 255)' : 'rgb(0, 0, 0)')
   const { violations } = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()
   const summary = violations.map((v) => `${v.id} (${v.impact}): ${v.help}\n    ${v.nodes.slice(0, 3).map((n) => n.target.join(' ')).join('\n    ')}`)
   expect.soft(summary, `accessibility problems on ${what}`).toEqual([])
@@ -17,7 +21,12 @@ async function ready(page: Page) {
   await page.waitForLoadState('networkidle')
 }
 
-test.describe('accessibility: signed out', () => {
+// Every screen is scanned in both themes (the page follows the emulated device setting, which is what "Device" means).
+for (const colorScheme of ['dark', 'light'] as const) {
+test.describe(`accessibility (${colorScheme} theme)`, () => {
+test.use({ colorScheme })
+
+test.describe('signed out', () => {
   for (const [path, what] of [['/login', 'sign in'], ['/register', 'register'], ['/forgot-password', 'forgot password']] as const) {
     test(what, async ({ page }) => {
       await page.goto(path)
@@ -27,7 +36,7 @@ test.describe('accessibility: signed out', () => {
   }
 })
 
-test.describe('accessibility: signed in', () => {
+test.describe('signed in', () => {
   test('every main screen', async ({ page, request, browser }) => {
     test.setTimeout(180_000)
     const me = await createUser(request, { displayName: 'Axe Tester' })
@@ -108,3 +117,5 @@ test.describe('accessibility: signed in', () => {
     await expectAccessible(page, 'the delete account dialog')
   })
 })
+})
+}

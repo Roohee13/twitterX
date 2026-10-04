@@ -13,7 +13,7 @@ import { profileKey, useProfile } from './profileData'
 
 export function UserRow({ user }: { user: UserSummary }) {
   return (
-    <Link to={`/u/${user.username}`} className="flex items-center gap-3 border-b border-zinc-800 px-4 py-3 hover:bg-white/[0.03]">
+    <Link to={`/u/${user.username}`} className="flex items-center gap-3 border-b border-zinc-800 px-4 py-3 hover:bg-hover">
       <Avatar src={user.avatarUrl} name={user.displayName} />
       <span className="min-w-0">
         <span className="flex items-center gap-1 font-bold">
@@ -32,7 +32,7 @@ export function FollowListPage({ kind }: { kind: 'followers' | 'following' }) {
   const profile = useProfile(username)
   const list = useCursorQuery<UserSummary>([...profileKey(username), kind], `/api/users/${encodeURIComponent(username)}/${kind}`)
   const base = `/u/${username}`
-  const tab = ({ isActive }: { isActive: boolean }) => `flex-1 py-4 text-center font-semibold hover:bg-zinc-900 ${isActive ? 'border-b-4 border-brand text-white' : 'text-zinc-500'}`
+  const tab = ({ isActive }: { isActive: boolean }) => `flex-1 py-4 text-center font-semibold hover:bg-zinc-900 ${isActive ? 'border-b-4 border-brand text-zinc-100' : 'text-zinc-500'}`
 
   return (
     <>

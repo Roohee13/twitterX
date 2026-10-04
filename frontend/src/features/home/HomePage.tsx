@@ -30,7 +30,7 @@ export function HomePage() {
           onClick={refresh}
           aria-label="Refresh timeline"
           title="Refresh"
-          className="ml-auto rounded-full p-2 text-zinc-400 hover:bg-zinc-900 hover:text-white"
+          className="ml-auto rounded-full p-2 text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"
         >
           <RefreshCw size={18} className={timeline.isRefetching ? 'animate-spin' : ''} />
         </button>

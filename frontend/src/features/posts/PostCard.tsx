@@ -12,7 +12,7 @@ export function QuotedPost({ post }: { post: PostResponse }) {
   const navigate = useNavigate()
   return (
     <div
-      className="mt-3 cursor-pointer rounded-2xl border border-zinc-800 p-3 hover:bg-white/[0.03]"
+      className="mt-3 cursor-pointer rounded-2xl border border-zinc-800 p-3 hover:bg-hover"
       aria-label={`Quoted post by ${post.author.displayName}`}
       role="group"
       onClick={(e) => {
@@ -43,7 +43,7 @@ export function PostCard({ post }: { post: PostResponse }) {
       onClick={(e) => {
         if (!(e.target as HTMLElement).closest(INTERACTIVE) && !window.getSelection()?.toString()) navigate(`/post/${post.id}`)
       }}
-      className="cursor-pointer border-b border-zinc-800 px-4 py-3 hover:bg-white/[0.02]"
+      className="cursor-pointer border-b border-zinc-800 px-4 py-3 hover:bg-hover"
     >
       {post.repostedBy && (
         <p className="mb-1 flex gap-3 text-[13px] font-bold text-zinc-500">

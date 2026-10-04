@@ -35,11 +35,11 @@ export function NotificationRow({ notification: n, onOpen, onDelete }: Notificat
       className={`flex items-start border-b border-zinc-800 ${n.read ? '' : 'bg-brand/10'}`}
     >
       {target ? (
-        <Link to={target} onClick={() => onOpen(n)} className={`${className} hover:bg-white/[0.03]`}>{body}</Link>
+        <Link to={target} onClick={() => onOpen(n)} className={`${className} hover:bg-hover`}>{body}</Link>
       ) : (
-        <button type="button" onClick={() => onOpen(n)} className={`${className} hover:bg-white/[0.03]`}>{body}</button>
+        <button type="button" onClick={() => onOpen(n)} className={`${className} hover:bg-hover`}>{body}</button>
       )}
-      <button type="button" aria-label="Delete notification" onClick={() => onDelete(n)} className="m-2 rounded-full p-2 text-zinc-500 hover:bg-zinc-800 hover:text-white">
+      <button type="button" aria-label="Delete notification" onClick={() => onDelete(n)} className="m-2 rounded-full p-2 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-100">
         <X size={18} />
       </button>
     </article>

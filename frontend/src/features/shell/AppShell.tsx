@@ -3,6 +3,7 @@ import { Bell, Bookmark, Feather, Home, LogOut, Mail, Search, Settings, ShieldAl
 import { useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, NavLink, Outlet, useMatch, useNavigate } from 'react-router'
 import { Avatar } from '../../components/ui/Avatar'
+import { ThemeToggle } from '../../components/ui/ThemeToggle'
 import { useAuth, useCurrentUser } from '../auth/AuthContext'
 import { VerificationBanner } from '../auth/VerificationBanner'
 import { ComposeProvider, useCompose } from '../compose/ComposeContext'
@@ -116,12 +117,13 @@ function UserCard() {
         <p className="truncate font-bold">{user.displayName}</p>
         <p className="truncate text-sm text-zinc-500">@{user.username}</p>
       </div>
+      <ThemeToggle />
       <button
         type="button"
         onClick={() => void logout()}
         aria-label="Log out"
         title="Log out"
-        className="rounded-full p-2 text-zinc-400 hover:bg-zinc-800 hover:text-white"
+        className="rounded-full p-2 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
       >
         <LogOut size={20} />
       </button>
@@ -213,7 +215,7 @@ function Shell() {
     <div className="mx-auto flex min-h-screen max-w-[1265px] justify-center">
       <SkipLink target={main} />
       <header className="sticky top-0 hidden h-screen w-[72px] shrink-0 flex-col px-2 py-2 sm:flex xl:w-[275px]">
-        <Link to="/" aria-label="XClone home" className="mb-2 w-fit rounded-full p-3 text-3xl font-black text-white hover:bg-zinc-900">
+        <Link to="/" aria-label="XClone home" className="mb-2 w-fit rounded-full p-3 text-3xl font-black text-zinc-100 hover:bg-zinc-900">
           X
         </Link>
         <nav aria-label="Main" className="flex flex-col gap-1">

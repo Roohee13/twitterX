@@ -13,7 +13,7 @@ export function ConversationRow({ conversation }: { conversation: ConversationRe
     <Link
       to={`/messages/${conversation.id}`}
       aria-label={`Conversation with ${participant.displayName}${unreadCount ? `, ${unreadCount} unread` : ''}`}
-      className={`flex items-center gap-3 border-b border-zinc-800 px-4 py-3 hover:bg-white/[0.03] ${unreadCount ? 'bg-brand/10' : ''}`}
+      className={`flex items-center gap-3 border-b border-zinc-800 px-4 py-3 hover:bg-hover ${unreadCount ? 'bg-brand/10' : ''}`}
     >
       <Avatar src={participant.avatarUrl} name={participant.displayName} />
       <div className="min-w-0 flex-1">

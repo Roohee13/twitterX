@@ -3,6 +3,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { RouterProvider } from 'react-router'
 import './index.css'
+import './lib/theme' // puts the saved theme on the page before anything renders
 import { ToastProvider } from './components/ui/Toast'
 import { AuthProvider } from './features/auth/AuthContext'
 import { ApiError } from './lib/api'

@@ -33,7 +33,7 @@ function TabList({ current, onChange }: { current: TabId; onChange: (id: TabId) 
           type="button"
           aria-selected={current === tab.id}
           onClick={() => onChange(tab.id)}
-          className={`flex-1 py-4 font-semibold hover:bg-zinc-900 ${current === tab.id ? 'border-b-4 border-brand text-white' : 'text-zinc-500'}`}
+          className={`flex-1 py-4 font-semibold hover:bg-zinc-900 ${current === tab.id ? 'border-b-4 border-brand text-zinc-100' : 'text-zinc-500'}`}
         >
           {tab.label}
         </button>

@@ -26,7 +26,7 @@ function Tabs<T extends string>({ label, items, current, onChange }: { label: st
     <div role="tablist" aria-label={label} className="flex border-b border-zinc-800">
       {items.map((item) => (
         <button key={item.id} role="tab" type="button" aria-selected={current === item.id} onClick={() => onChange(item.id)}
-          className={`flex-1 py-3 font-semibold hover:bg-zinc-900 ${current === item.id ? 'border-b-4 border-brand text-white' : 'text-zinc-500'}`}>
+          className={`flex-1 py-3 font-semibold hover:bg-zinc-900 ${current === item.id ? 'border-b-4 border-brand text-zinc-100' : 'text-zinc-500'}`}>
           {item.label}
         </button>
       ))}

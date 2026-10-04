@@ -32,7 +32,7 @@ export function FollowChip({ user }: { user: UserSummary }) {
     return <span className="rounded-full border border-zinc-600 px-4 py-1 text-sm font-semibold text-zinc-300">{state === 'following' ? 'Following' : 'Requested'}</span>
   }
   return (
-    <Button size="sm" aria-label={`Follow @${user.username}`} loading={state === 'busy'} onClick={() => void follow()} className="!bg-white !text-black hover:!bg-zinc-200">
+    <Button size="sm" aria-label={`Follow @${user.username}`} loading={state === 'busy'} onClick={() => void follow()} className="!bg-zinc-100 !text-zinc-900 hover:!bg-zinc-200">
       Follow
     </Button>
   )

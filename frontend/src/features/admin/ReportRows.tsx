@@ -69,7 +69,7 @@ function StatusButtons({ kind, report, extra }: { kind: 'users' | 'posts'; repor
 
 function AccountCard({ user }: { user: UserSummary }) {
   return (
-    <Link to={`/u/${user.username}`} className="flex items-center gap-3 rounded-xl border border-zinc-800 p-3 hover:bg-white/[0.03]">
+    <Link to={`/u/${user.username}`} className="flex items-center gap-3 rounded-xl border border-zinc-800 p-3 hover:bg-hover">
       <Avatar src={user.avatarUrl} name={user.displayName} />
       <span className="min-w-0">
         <span className="flex items-center gap-1 font-bold">

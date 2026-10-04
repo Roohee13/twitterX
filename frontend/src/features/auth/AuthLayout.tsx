@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { ThemeToggle } from '../../components/ui/ThemeToggle'
 import { usePageTitle } from '../../lib/usePageTitle'
 
 /** The centered card shared by login, register and the password / email screens. */
@@ -6,6 +7,7 @@ export function AuthLayout({ title, children, footer }: { title: string; childre
   usePageTitle(title)
   return (
     <div className="flex min-h-screen items-center justify-center px-4 py-10">
+      <ThemeToggle className="fixed right-3 top-3" />
       <div className="w-full max-w-md">
         <p aria-hidden="true" className="mb-6 text-center text-5xl font-black">X</p>
         <h1 className="mb-6 text-center text-3xl font-extrabold">{title}</h1>

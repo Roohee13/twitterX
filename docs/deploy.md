@@ -78,7 +78,7 @@ Keep the `http://localhost:5173` entry too if you also develop against this buck
 
 - **Content-Security-Policy.** Not enabled by default, and not tested here. A starting point to try with `Content-Security-Policy-Report-Only` first:
   `default-src 'self'; connect-src 'self' https://api.example.com wss://api.example.com; img-src 'self' data: blob: https://<your R2_PUBLIC_BASE_URL host>; style-src 'self' 'unsafe-inline'`
-  (`'unsafe-inline'` for styles because a few elements set widths with `style=""`).
+  (`'unsafe-inline'` for styles because a few elements set widths with `style=""`). The theme script is a separate file (`/theme-init.js`), so `script-src 'self'` is enough; no inline script is needed.
 - Other headers worth adding at the static host: `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `X-Frame-Options: DENY`.
 - The refresh token is kept in `localStorage`, so the app must never render untrusted HTML. It does not (post text is always escaped), and a CSP is a good second line of defence.
 

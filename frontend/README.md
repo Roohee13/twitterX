@@ -67,10 +67,27 @@ src/features/     auth (context, guards, login, register, verify-email, password
                   profile (profile page and tabs, follow/mute/block, edit profile, follower lists, follow requests),
                   explore (search, trending, hashtag page, who to follow), bookmarks, notifications (page, unread badge, live push over one shared STOMP socket in lib/socket.ts),
                   messages (inbox, chat, new message, live delivery and unread badge; sends go over REST, one at a time),
-                  settings (username, email, password, protected account, blocked and muted lists, deactivate, delete),
+                  settings (username, email, password, appearance, protected account, blocked and muted lists, deactivate, delete),
                   admin (report review, remove post, suspend or remove account); more are added per step
 e2e/              Playwright specs and helpers
 ```
+
+## Themes
+
+Light and dark, chosen in Settings (Device / Light / Dark) or with the sun/moon button next to the log-out button and on the sign-in pages.
+"Device" (the default) follows the operating system's setting and changes with it while the page is open; an explicit choice is saved in
+`localStorage` (`xclone.theme`) and shared between tabs.
+
+How it works, so a new component needs nothing special:
+
+- Components use Tailwind's colour names (`bg-black`, `bg-zinc-900`, `text-zinc-500`, `text-red-300` ...). Tailwind turns each into a CSS variable, and
+  `src/index.css` gives those variables different values under `:root[data-theme='light']`: the grey scale is mirrored (zinc-900 is the lightest card grey, zinc-100 the darkest text)
+  and coloured text is darkened. Write new UI with those names and it follows the theme.
+- Use `text-white` only on a coloured background that stays dark in both themes (`bg-brand-solid`, `bg-red-600`). For strong text use `text-zinc-100`,
+  for a hover wash `hover:bg-hover`.
+- `public/theme-init.js` sets `data-theme` before the first paint (no flash of the wrong theme); `src/lib/theme.ts` changes it afterwards.
+- Contrast is held to WCAG AA in both: `e2e/a11y.spec.ts` scans every screen in each theme, and `e2e/theme.spec.ts` covers the behaviour above.
+  Any colour you add to a theme in `index.css` must keep text at 4.5:1.
 
 ## Sign-in tokens
 

@@ -52,7 +52,7 @@ Each ends with a working, tested slice you can click through.
 | **4** | Discovery | Search (people and posts), hashtag page, trending, who-to-follow, bookmarks |
 | **5** | Notifications and real-time | Notifications page with unread badge, live updates over one shared STOMP connection (`lib/socket.ts`, reused by Messages), moderation notices; follow-request approve/deny lives on its own page, linked from the notification |
 | **6** | Messages | Inbox (preview + unread per conversation), chat thread with older messages on request, send with retry, live delivery over the shared socket, unread badge, Message button on profiles |
-| **7** | Settings | One `/settings` page: username, email, password (signs out everywhere), protected-account switch, blocked and muted lists with undo, deactivate (reversible) and delete (password + username typed). Linked from the sidebar and from your own profile |
+| **7** | Settings | One `/settings` page: username, email, password (signs out everywhere), appearance (device / light / dark), protected-account switch, blocked and muted lists with undo, deactivate (reversible) and delete (password + username typed). Linked from the sidebar and from your own profile |
 | **8** | Finishing and deploy | Accessibility (axe scan of every screen in CI, keyboard flow, page titles, skip link, reduced motion, AA contrast), route-level code splitting, a `frontend` and an `e2e` CI job, browser tests against the production build, [deploy guide](deploy.md) |
 
 ## Backend things the frontend will need (small, tracked here)

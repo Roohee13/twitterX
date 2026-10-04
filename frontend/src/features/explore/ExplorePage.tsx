@@ -27,7 +27,7 @@ function TrendingList() {
       {trends.isError && <ErrorState message="Trends are unavailable right now." onRetry={() => void trends.refetch()} />}
       {trends.data?.length === 0 && <p className="px-4 pb-4 text-zinc-500">Nothing is trending yet. Post with a #hashtag to start something.</p>}
       {trends.data?.map((tag) => (
-        <Link key={tag.name} to={`/hashtag/${tag.name}`} className="block border-b border-zinc-800 px-4 py-3 hover:bg-white/[0.03]">
+        <Link key={tag.name} to={`/hashtag/${tag.name}`} className="block border-b border-zinc-800 px-4 py-3 hover:bg-hover">
           <p className="font-bold">#{tag.name}</p>
           <p className="text-sm text-zinc-500">{tag.postCount} {tag.postCount === 1 ? 'post' : 'posts'} · {tag.userCount} {tag.userCount === 1 ? 'person' : 'people'}</p>
         </Link>
@@ -84,7 +84,7 @@ export function ExplorePage() {
             className="w-full rounded-full bg-zinc-900 py-2.5 pl-11 pr-10 text-[15px] placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-brand [&::-webkit-search-cancel-button]:hidden"
           />
           {typed && (
-            <button type="button" aria-label="Clear search" onClick={() => setQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-brand p-1 text-white">
+            <button type="button" aria-label="Clear search" onClick={() => setQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-brand-solid p-1 text-white">
               <X size={12} />
             </button>
           )}
@@ -106,7 +106,7 @@ export function ExplorePage() {
                 type="button"
                 aria-selected={tab === id}
                 onClick={() => update((next) => next.set('tab', id))}
-                className={`flex-1 py-4 font-semibold capitalize hover:bg-zinc-900 ${tab === id ? 'border-b-4 border-brand text-white' : 'text-zinc-500'}`}
+                className={`flex-1 py-4 font-semibold capitalize hover:bg-zinc-900 ${tab === id ? 'border-b-4 border-brand text-zinc-100' : 'text-zinc-500'}`}
               >
                 {id}
               </button>
