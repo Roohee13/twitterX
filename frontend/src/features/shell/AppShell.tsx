@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Bookmark, Feather, Home, LogOut, Search, ShieldAlert, User, UserCheck } from 'lucide-react'
+import { Bell, Bookmark, Feather, Home, LogOut, Search, ShieldAlert, User, UserCheck } from 'lucide-react'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { Link, NavLink, Outlet, useMatch, useNavigate } from 'react-router'
 import { Avatar } from '../../components/ui/Avatar'
@@ -7,6 +7,8 @@ import { useAuth, useCurrentUser } from '../auth/AuthContext'
 import { VerificationBanner } from '../auth/VerificationBanner'
 import { ComposeProvider, useCompose } from '../compose/ComposeContext'
 import { WhoToFollow } from '../explore/WhoToFollow'
+import { LiveSocketProvider } from '../notifications/LiveSocketProvider'
+import { useLiveNotifications, useUnreadCount } from '../notifications/notificationHooks'
 import { api } from '../../lib/api'
 import type { TrendingHashtag } from '../../lib/types'
 
@@ -14,14 +16,18 @@ interface NavItem {
   to: string
   label: string
   icon: ReactNode
+  /** Unread count shown on the icon. */
+  badge?: number
 }
 
 // Entries are added here as their pages are built.
 function useNavItems(): NavItem[] {
   const user = useCurrentUser()
+  const unread = useUnreadCount().data ?? 0
   return [
     { to: '/', label: 'Home', icon: <Home size={26} /> },
     { to: '/explore', label: 'Explore', icon: <Search size={26} /> },
+    { to: '/notifications', label: 'Notifications', icon: <Bell size={26} />, badge: unread },
     { to: '/bookmarks', label: 'Bookmarks', icon: <Bookmark size={26} /> },
     { to: `/u/${user.username}`, label: 'Profile', icon: <User size={26} /> },
     // Only protected accounts have follow requests to answer.
@@ -40,12 +46,19 @@ function NavItems({ vertical }: { vertical: boolean }) {
           key={item.to}
           to={item.to}
           end
-          aria-label={item.label}
+          aria-label={item.badge ? `${item.label} (${item.badge} unread)` : item.label}
           className={({ isActive }) =>
             `flex items-center gap-4 rounded-full p-3 text-xl hover:bg-zinc-900 ${isActive ? 'font-bold' : ''} ${vertical ? '' : 'flex-1 justify-center'}`
           }
         >
-          {item.icon}
+          <span className="relative">
+            {item.icon}
+            {item.badge ? (
+              <span aria-hidden="true" className="absolute -right-2 -top-1 min-w-[18px] rounded-full bg-brand px-1 text-center text-xs font-bold leading-[18px] text-white">
+                {item.badge > 99 ? '99+' : item.badge}
+              </span>
+            ) : null}
+          </span>
           {vertical && <span className="hidden xl:inline">{item.label}</span>}
         </NavLink>
       ))}
@@ -161,13 +174,16 @@ function RightColumn() {
 /** Left navigation, the page in the middle, side panels on the right; a bottom bar on phones. */
 export function AppShell() {
   return (
-    <ComposeProvider>
-      <Shell />
-    </ComposeProvider>
+    <LiveSocketProvider>
+      <ComposeProvider>
+        <Shell />
+      </ComposeProvider>
+    </LiveSocketProvider>
   )
 }
 
 function Shell() {
+  useLiveNotifications()
   return (
     <div className="mx-auto flex min-h-screen max-w-[1265px] justify-center">
       <header className="sticky top-0 hidden h-screen w-[72px] shrink-0 flex-col px-2 py-2 sm:flex xl:w-[275px]">

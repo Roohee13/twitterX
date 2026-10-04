@@ -25,6 +25,11 @@ export function configureApi(options: { baseUrl?: string }) {
   if (options.baseUrl !== undefined) baseUrl = options.baseUrl
 }
 
+/** The API origin ('' in development, where the dev server proxies it); the live socket needs it to build its address. */
+export function apiBaseUrl() {
+  return baseUrl
+}
+
 export function setSessionExpiredHandler(handler: (() => void) | undefined) {
   onSessionExpired = handler
 }

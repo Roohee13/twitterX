@@ -22,8 +22,9 @@ function Where() {
   return <p data-testid="where">{location.pathname + location.search}</p>
 }
 
-function open(route = '/', user: { admin?: boolean } = {}) {
+function open(route = '/', user: { admin?: boolean } = {}, unread = 0) {
   server.use(
+    http.get(`${BASE}/api/notifications/unread-count`, () => HttpResponse.json({ count: unread })),
     http.get(`${BASE}/api/trending/hashtags`, () => HttpResponse.json([{ name: 'java', postCount: 2, userCount: 2 }])),
     http.get(`${BASE}/api/users/suggestions`, () => HttpResponse.json([{ user: makeUser({ id: 5, username: 'sue_s', displayName: 'Sue S' }), mutualFollowCount: 1 }])),
   )
@@ -37,12 +38,30 @@ function open(route = '/', user: { admin?: boolean } = {}) {
 }
 
 describe('the app shell', () => {
-  it('has Home, Explore, Bookmarks and Profile in the navigation', async () => {
+  it('has Home, Explore, Notifications, Bookmarks and Profile in the navigation', async () => {
     open()
     const nav = await screen.findByRole('navigation', { name: 'Main' })
-    expect(within(nav).getAllByRole('link').map((l) => l.getAttribute('aria-label'))).toEqual(['Home', 'Explore', 'Bookmarks', 'Profile'])
+    expect(within(nav).getAllByRole('link').map((l) => l.getAttribute('aria-label'))).toEqual(['Home', 'Explore', 'Notifications', 'Bookmarks', 'Profile'])
     expect(within(nav).getByRole('link', { name: 'Explore' })).toHaveAttribute('href', '/explore')
     expect(within(nav).getByRole('link', { name: 'Bookmarks' })).toHaveAttribute('href', '/bookmarks')
+  })
+
+  it('shows how many notifications are unread on the Notifications link, and nothing when there are none', async () => {
+    open('/', {}, 3)
+    const nav = await screen.findByRole('navigation', { name: 'Main' })
+    const link = await within(nav).findByRole('link', { name: 'Notifications (3 unread)' })
+    expect(link).toHaveAttribute('href', '/notifications')
+    expect(link).toHaveTextContent('3')
+  })
+
+  it('has no badge when everything is read, and caps a long count', async () => {
+    const { unmount } = open('/', {}, 0)
+    const nav = await screen.findByRole('navigation', { name: 'Main' })
+    expect(within(nav).getByRole('link', { name: 'Notifications' })).not.toHaveTextContent(/\d/)
+    unmount()
+    open('/', {}, 250)
+    const main = await screen.findByRole('navigation', { name: 'Main' })
+    expect(await within(main).findByRole('link', { name: 'Notifications (250 unread)' })).toHaveTextContent('99+')
   })
 
   it('shows the Reports link to admins only', async () => {
