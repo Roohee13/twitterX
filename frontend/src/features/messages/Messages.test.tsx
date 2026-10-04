@@ -32,6 +32,13 @@ const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000).toISOString(
 const message = (conversationId: number, from: 'me' | 'them', content: string, overrides: Partial<MessageResponse> = {}): MessageResponse => ({
   id: nextMessageId++, conversationId, sender: from === 'me' ? meSummary : dana, content, createdAt: minutesAgo(5), ...overrides,
 })
+/** One page of a thread the way the API serves it: the latest messages first, each page ordered oldest to newest, `nextCursor` = the oldest id on the page. */
+function pageOf(oldestFirst: MessageResponse[], cursor: number, limit: number) {
+  const older = oldestFirst.filter((m) => m.id < cursor)
+  const items = older.slice(-limit)
+  return { items, nextCursor: older.length > limit ? items[0].id : null }
+}
+
 const conversation = (id: number, participant = dana, overrides: Partial<ConversationResponse> = {}): ConversationResponse => ({
   id, participant, createdAt: minutesAgo(60), updatedAt: minutesAgo(5), lastMessage: null, unreadCount: 0, ...overrides,
 })
@@ -67,13 +74,10 @@ function serve(initial: { conversations: ConversationResponse[]; messages?: Reco
       return found ? HttpResponse.json(found) : HttpResponse.json({ status: 404, detail: 'Conversation not found' }, { status: 404 })
     }),
     http.get(`${BASE}/api/conversations/:id/messages`, ({ params, request }) => {
-      const all = [...(state.messages[Number(params.id)] ?? [])].reverse() // newest first
       const url = new URL(request.url)
       const cursor = Number(url.searchParams.get('cursor') ?? Number.MAX_SAFE_INTEGER)
       const limit = Number(url.searchParams.get('limit') ?? 20)
-      const rest = all.filter((m) => m.id < cursor)
-      const items = rest.slice(0, limit)
-      return HttpResponse.json({ items, nextCursor: rest.length > limit ? items.at(-1)!.id : null })
+      return HttpResponse.json(pageOf(state.messages[Number(params.id)] ?? [], cursor, limit))
     }),
     http.post(`${BASE}/api/conversations/:id/messages`, async ({ params, request }) => {
       const { content } = (await request.json()) as { content: string }
@@ -194,6 +198,30 @@ describe('a conversation', () => {
     expect(bubbles.map((b) => b.textContent)).toEqual(['hello there', 'hi dana'])
     expect(screen.getByRole('link', { name: "Dana Dev's profile" })).toHaveAttribute('href', '/u/dana')
     expect(screen.getByRole('link', { name: 'Back to messages' })).toHaveAttribute('href', '/messages')
+  })
+
+  it('keeps the conversation in order, oldest at the top and the newest right above the writing box, also after sending and receiving', async () => {
+    const state = serve({
+      conversations: [conversation(1)],
+      messages: { 1: [message(1, 'them', 'first', { createdAt: minutesAgo(30) }), message(1, 'me', 'second', { createdAt: minutesAgo(20) }), message(1, 'them', 'third', { createdAt: minutesAgo(10) }), message(1, 'me', 'fourth', { createdAt: minutesAgo(5) })] },
+    })
+    const { live } = open('/messages/1', state)
+    const order = () => screen.getAllByText(/^(first|second|third|fourth|fifth|sixth)$/).map((b) => b.textContent)
+    await screen.findByText('fourth')
+    expect(order()).toEqual(['first', 'second', 'third', 'fourth'])
+
+    await userEvent.type(textbox(), 'fifth{Enter}') // sent by me
+    await screen.findByText('fifth')
+    expect(order()).toEqual(['first', 'second', 'third', 'fourth', 'fifth'])
+    await waitFor(() => expect(screen.queryByText('Sending…')).not.toBeInTheDocument())
+    expect(order()).toEqual(['first', 'second', 'third', 'fourth', 'fifth'])
+
+    await waitFor(() => expect(live.subscribed(PUSH)).toBe(1))
+    const pushed = message(1, 'them', 'sixth', { createdAt: new Date().toISOString() })
+    state.messages[1].push(pushed)
+    await live.push(PUSH, pushed) // received
+    await screen.findByText('sixth')
+    await waitFor(() => expect(order()).toEqual(['first', 'second', 'third', 'fourth', 'fifth', 'sixth']))
   })
 
   it('invites you to say hello when there are no messages', async () => {
@@ -360,7 +388,7 @@ describe('live messages', () => {
       calls += 1
       const first = calls === 1
       await new Promise((r) => setTimeout(r, first ? 100 : 0)) // the first answer was prepared before the message existed
-      return HttpResponse.json({ items: (first ? stale : state.messages[1]).slice().reverse(), nextCursor: null })
+      return HttpResponse.json(pageOf(first ? stale : state.messages[1], Number.MAX_SAFE_INTEGER, 30))
     }))
     const { live } = open('/messages/1', state)
     await waitFor(() => expect(live.subscribed(PUSH)).toBe(1))
@@ -382,7 +410,7 @@ describe('live messages', () => {
     let slow = true
     server.use(http.get(`${BASE}/api/conversations/1/messages`, async () => {
       if (slow) await new Promise((r) => setTimeout(r, 120))
-      return HttpResponse.json({ items: (slow ? stale : state.messages[1]).slice().reverse(), nextCursor: null }) // newest first
+      return HttpResponse.json(pageOf(slow ? stale : state.messages[1], Number.MAX_SAFE_INTEGER, 30))
     }))
     await live.connect() // a catch-up read starts, answered with the state from before the push
     const pushed = message(1, 'them', 'arrived meanwhile', { createdAt: new Date().toISOString() })

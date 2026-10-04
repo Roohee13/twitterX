@@ -14,13 +14,16 @@ function addToTotal(queryClient: QueryClient, delta: number) {
   queryClient.setQueryData<{ count: number }>(UNREAD_MESSAGES_KEY, (old) => (old ? { count: Math.max(0, old.count + delta) } : old))
 }
 
-/** Puts a message at the end of a thread that is loaded (pages are newest first, so that is the front of the first page). */
+/**
+ * Puts a message at the end of a thread that is loaded. The API's first page holds the latest messages and each page is ordered oldest to
+ * newest (older pages follow), so the newest message goes at the end of the first page.
+ */
 function appendToThread(queryClient: QueryClient, message: MessageResponse) {
   const key = threadKey(message.conversationId)
   const data = queryClient.getQueryData<Thread>(key)
   if (!data || data.pages.length === 0 || data.pages.some((page) => page.items.some((m) => m.id === message.id))) return
   const [first, ...rest] = data.pages
-  queryClient.setQueryData<Thread>(key, { ...data, pages: [{ ...first, items: [message, ...first.items] }, ...rest] })
+  queryClient.setQueryData<Thread>(key, { ...data, pages: [{ ...first, items: [...first.items, message] }, ...rest] })
 }
 
 /**

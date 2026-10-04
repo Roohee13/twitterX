@@ -76,6 +76,67 @@ test.describe('messages', () => {
     await expect(messagesLink(page, 'Messages (2 unread)')).toBeVisible()
   })
 
+  test('messages read oldest to newest, a message you send or receive lands at the bottom, right above the writing box, and a reload keeps the order', async ({ browser, page, request }) => {
+    const me = await createUser(request)
+    const friend = await createUser(request, { displayName: 'Order Friend' })
+    const { id } = await as(request, me).startConversation(friend.username)
+    for (let i = 1; i <= 5; i++) await as(request, i % 2 ? friend : me).sendMessage(id, `seed ${i}`)
+    const texts = async (p: Page) => (await p.locator('main p').allTextContents()).filter((t) => /^(seed|sent|received)/.test(t))
+    const gapAboveBox = async (p: Page, text: string) => {
+      const bubble = await p.getByText(text, { exact: true }).boundingBox()
+      const field = await box(p).boundingBox()
+      return { gap: field!.y - (bubble!.y + bubble!.height), onScreen: bubble!.y >= 0 }
+    }
+    await signIn(page, me, `/messages/${id}`)
+    await expect(page.getByText('seed 5')).toBeVisible()
+    expect(await texts(page)).toEqual(['seed 1', 'seed 2', 'seed 3', 'seed 4', 'seed 5'])
+
+    await box(page).fill('sent by me')
+    await box(page).press('Enter')
+    await expect(page.getByText('Sending…')).toHaveCount(0)
+    await expect.poll(() => texts(page)).toEqual(['seed 1', 'seed 2', 'seed 3', 'seed 4', 'seed 5', 'sent by me'])
+    const sent = await gapAboveBox(page, 'sent by me')
+    expect(sent.onScreen).toBe(true)
+    expect(sent.gap).toBeGreaterThanOrEqual(0)
+    expect(sent.gap).toBeLessThan(100) // directly above the box, not somewhere up the page
+
+    // The friend writes back from another browser: it arrives live at the bottom, in the open chat.
+    const friendPage = await (await browser.newContext()).newPage()
+    await as(request, friend).sendMessage(id, 'received from friend')
+    await expect.poll(() => texts(page)).toEqual(['seed 1', 'seed 2', 'seed 3', 'seed 4', 'seed 5', 'sent by me', 'received from friend'])
+    expect((await gapAboveBox(page, 'received from friend')).gap).toBeLessThan(100)
+    await friendPage.close()
+
+    await page.reload()
+    await expect(page.getByText('received from friend')).toBeVisible()
+    expect(await texts(page)).toEqual(['seed 1', 'seed 2', 'seed 3', 'seed 4', 'seed 5', 'sent by me', 'received from friend'])
+    expect((await gapAboveBox(page, 'received from friend')).gap).toBeLessThan(100)
+  })
+
+  test('in a long conversation the newest message is on screen right above the box, after loading and after sending', async ({ page, request }) => {
+    const me = await createUser(request)
+    const friend = await createUser(request, { displayName: 'Long Talker' })
+    const { id } = await as(request, me).startConversation(friend.username)
+    for (let i = 1; i <= 40; i++) await as(request, i % 2 ? friend : me).sendMessage(id, `long ${i}`)
+    await signIn(page, me, `/messages/${id}`)
+    await expect(page.getByText('long 40', { exact: true })).toBeVisible()
+    const near = async (text: string) => {
+      await expect.poll(async () => {
+        const bubble = await page.getByText(text, { exact: true }).boundingBox()
+        const field = await box(page).boundingBox()
+        return bubble && field ? { onScreen: bubble.y >= 0 && bubble.y + bubble.height <= field.y, gap: Math.round(field.y - (bubble.y + bubble.height)) } : null
+      }).toMatchObject({ onScreen: true })
+      const bubble = (await page.getByText(text, { exact: true }).boundingBox())!
+      const field = (await box(page).boundingBox())!
+      expect(field.y - (bubble.y + bubble.height)).toBeLessThan(100)
+    }
+    await near('long 40')
+
+    await box(page).fill('long sent')
+    await box(page).press('Enter')
+    await near('long sent')
+  })
+
   test('a long conversation loads older messages on request', async ({ page, request }) => {
     const me = await createUser(request)
     const friend = await createUser(request, { displayName: 'Chatty Friend' })
@@ -87,6 +148,8 @@ test.describe('messages', () => {
     await expect(page.getByText('message number 3', { exact: true })).toHaveCount(0)
     await page.getByRole('button', { name: 'Load older messages' }).click()
     await expect(page.getByText('message number 1', { exact: true })).toBeVisible()
+    const shown = (await page.locator('main p').allTextContents()).filter((t) => t.startsWith('message number'))
+    expect(shown).toEqual(Array.from({ length: 35 }, (_, i) => `message number ${i + 1}`)) // oldest first, no gaps, no repeats
     await expect(page.getByRole('button', { name: 'Load older messages' })).toHaveCount(0)
   })
 
@@ -148,7 +211,9 @@ test.describe('on a phone', () => {
     await page.getByRole('link', { name: /Conversation with Phone Friend/ }).click()
     await expect(page.getByText(/a fairly long message/)).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    const lastBubble = await page.getByText(/a fairly long message/).boundingBox()
     const composer = await box(page).boundingBox()
+    expect(composer!.y - (lastBubble!.y + lastBubble!.height)).toBeLessThan(100) // the message sits right above the writing box
     const bar = await page.getByRole('navigation', { name: 'Main (mobile)' }).boundingBox()
     expect(composer!.y + composer!.height).toBeLessThanOrEqual(bar!.y + 1)
     await page.waitForTimeout(300) // let any scrolling settle

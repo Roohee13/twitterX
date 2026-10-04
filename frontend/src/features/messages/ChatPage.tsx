@@ -42,8 +42,9 @@ export function ChatPage() {
   })
   const thread = useCursorQuery<MessageResponse>(threadKey(id), `/api/conversations/${id}/messages`, { enabled: conversation.isSuccess, limit: 30 })
 
-  // Pages come newest first; the chat reads oldest first.
-  const messages = useMemo(() => (thread.data?.pages.flatMap((page) => page.items) ?? []).slice().reverse(), [thread.data])
+  // The first page holds the latest messages and the following pages go further back in time, each one ordered oldest to newest.
+  // Reading top to bottom therefore means the last page first.
+  const messages = useMemo(() => (thread.data?.pages ?? []).slice().reverse().flatMap((page) => page.items), [thread.data])
   const newestId = messages.at(-1)?.id
 
   // Opening a conversation with unread messages reads them.
