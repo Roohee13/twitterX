@@ -5,5 +5,7 @@ public enum AccountStatus {
     /** The row and all content are kept; tokens stop working until the user logs in again, which reactivates it. */
     DEACTIVATED,
     /** The row is an anonymized placeholder kept so other users' threads and reports stay intact. */
-    DELETED
+    DELETED,
+    /** Set by an admin: cannot sign in, hidden from others; an admin can lift it. */
+    SUSPENDED
 }

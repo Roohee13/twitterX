@@ -5,6 +5,8 @@ import java.time.Instant;
 import com.project.Xclone_backend.post.Post;
 import com.project.Xclone_backend.user.User;
 
+import org.hibernate.annotations.ColumnDefault;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -46,4 +48,20 @@ public class PostReport {
 
     @Column(nullable = false)
     private Instant createdAt;
+
+    /** Review status, changed by admins through the repository's update queries. */
+    @Enumerated(EnumType.STRING)
+    @ColumnDefault("'OPEN'")
+    @Column(nullable = false, length = 20)
+    private ReportStatus status = ReportStatus.OPEN;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "handled_by")
+    private User handledBy;
+
+    private Instant handledAt;
+
+    /** What the admin told the affected people when handling the report. */
+    @Column(length = 500)
+    private String adminNote;
 }

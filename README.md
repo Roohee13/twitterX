@@ -164,6 +164,45 @@ The owner is notified of requests (`FOLLOW_REQUEST`). Turning protection off app
 
 **Pagination.** Paged endpoints accept `?cursor=&limit=` (default 20, max 50) and return `{ items, nextCursor }`. Pass `nextCursor` back to get the next page; `null` means there are no more pages.
 
+## Moderating reports
+
+Users can report accounts (`POST /users/{username}/report`) and posts (`POST /posts/{id}/report`). A report stores who reported, who or what, the
+reason, and a review status (`OPEN`, `DISMISSED`, `RESOLVED`). The reported account or post is unchanged until an admin acts; the admins are alerted (see below).
+
+**Becoming an admin** is done in the database; there is no way to do it through the API. Run this once per person (psql locally, or Neon's SQL editor):
+
+```sql
+update users set is_admin = true where username = 'their_username';   -- revoke with false
+```
+
+The flag is read from the database on every admin request, so granting and revoking take effect immediately (no restart, no new login). `GET /users/me`
+returns `admin` so the app can show the "Reports" page, which lives at `/admin/reports` in the frontend.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/admin/reports/users`, `/admin/reports/posts` | `?status=OPEN` (default) / `HANDLED` (dismissed or resolved) / `ALL`; newest first, paged. Each row has the reporter, reason, status, who handled it and when, and `totalReports` (how many reports that account / post has received) |
+| PATCH | `/admin/reports/users/{id}`, `/admin/reports/posts/{id}` | `{status, note?}`; `OPEN` reopens. Records the admin and the time; dismissing or resolving tells the reporter. 204 |
+| POST | `/admin/posts/{postId}/remove` | removes a reported post (the same soft delete as an author deleting it) and resolves all its open reports. Optional body `{note}`. Tells the author and the reporters. Safe to repeat. 204 |
+| POST | `/admin/users/{userId}/suspend` | optional `{note}`. Sets status `SUSPENDED`: all sessions end, sign-in answers `403 Account suspended`, the profile and posts are hidden (404 / absent from timelines and search), open reports about the account are resolved, the user is emailed. Reversible. 204 |
+| POST | `/admin/users/{userId}/unsuspend` | lifts it and emails the user. 204 |
+| POST | `/admin/users/{userId}/remove` | optional `{note}`. Permanent: the same anonymization as a user deleting their own account, without the password. The user is emailed first. Admins and yourself cannot be targeted. 204 |
+
+Everything under `/admin` answers `403 Admins only` to other users and `401` to anonymous callers. Admins see the content of a reported post even when it belongs to a
+protected account: that is what reviewing a report needs, so grant the flag sparingly.
+
+**Notifications.** Moderation messages are in-app notifications with no actor (so no admin's name is shown; `actor` is `null` and the text is in `detail`) plus an email,
+because a suspended or removed user cannot read the app:
+
+| Event | Who is told |
+|---|---|
+| A report arrives | every active admin, but only for the *first* open report about an account or post (more reports raise the count on the Reports page instead of sending more alerts) |
+| A post is removed | its author, with the admin's note if there is one |
+| A report is dismissed, resolved or closed by an action | the reporter ("action taken" / "no action taken"; the note is never shared with reporters) |
+| Account suspended, unsuspended, removed | that user, by email only |
+
+Suspension is not deactivation: deactivating is the user's own choice and signing in undoes it; a suspension can only be lifted by an admin. Emails are sent after the action commits and never make it fail
+(without `SPRING_MAIL_HOST` they are logged). The frontend does not show these notifications yet (that comes with the Notifications page); the emails and the API work now.
+
 ## Email
 
 Registering and changing your email send a verification link (`emailVerified` in the user response; accounts that

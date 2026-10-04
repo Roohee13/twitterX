@@ -18,7 +18,7 @@ public class UserMapper {
     public UserResponse toResponse(User u) {
         return new UserResponse(u.getId(), u.getUsername(), u.getEmail(), u.isEmailVerified(),
                 u.getDisplayName(), u.getBio(), r2.publicUrl(u.getAvatarKey()), r2.publicUrl(u.getBannerKey()), u.getCreatedAt(),
-                u.isProtectedAccount());
+                u.isProtectedAccount(), u.isAdmin());
     }
 
     public UserSummary toSummary(User u) {

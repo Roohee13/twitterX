@@ -42,8 +42,9 @@ public class Notification {
     @JoinColumn(name = "recipient_id", nullable = false)
     private User recipient;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "actor_id", nullable = false)
+    /** Null for system notifications (moderation). */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "actor_id")
     private User actor;
 
     @Enumerated(EnumType.STRING)
@@ -53,6 +54,10 @@ public class Notification {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "post_id")
     private Post post;
+
+    /** Free text for system notifications (the admin's note or a short summary). */
+    @Column(length = 500)
+    private String detail;
 
     private Instant readAt;
 

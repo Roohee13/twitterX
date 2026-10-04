@@ -68,6 +68,11 @@ public class User {
     @Column(nullable = false)
     private boolean protectedAccount;
 
+    /** Can use the admin endpoints (report review). Granted by hand in the database; there is no way to become one through the API. */
+    @ColumnDefault("false")
+    @Column(name = "is_admin", nullable = false)
+    private boolean admin;
+
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private Instant createdAt;

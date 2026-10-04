@@ -10,29 +10,29 @@ import org.springframework.data.jpa.repository.Query;
 
 public interface NotificationRepository extends JpaRepository<Notification, Long> {
 
-    /** Newest first; hides actors blocked either way or muted, inactive actors and soft-deleted posts. */
+    /** Newest first; hides actors blocked either way or muted, inactive actors and soft-deleted posts. System notifications (no actor) always show. */
     @Query("""
-            select n from Notification n join fetch n.actor left join fetch n.post p
+            select n from Notification n left join fetch n.actor a left join fetch n.post p
             where n.recipient.id = :userId and n.id < :cursor
-              and n.actor.status = com.project.Xclone_backend.user.AccountStatus.ACTIVE
+              and (a is null or (a.status = com.project.Xclone_backend.user.AccountStatus.ACTIVE
+                   and not exists (select 1 from Block b
+                        where (b.blocker.id = :userId and b.blocked.id = a.id)
+                           or (b.blocker.id = a.id and b.blocked.id = :userId))
+                   and not exists (select 1 from Mute m where m.muter.id = :userId and m.muted.id = a.id)))
               and (p is null or p.deleted = false)
-              and not exists (select 1 from Block b
-                   where (b.blocker.id = :userId and b.blocked.id = n.actor.id)
-                      or (b.blocker.id = n.actor.id and b.blocked.id = :userId))
-              and not exists (select 1 from Mute m where m.muter.id = :userId and m.muted.id = n.actor.id)
             order by n.id desc
             """)
     List<Notification> findPage(Long userId, long cursor, Limit limit);
 
     @Query("""
-            select count(n) from Notification n left join n.post p
+            select count(n) from Notification n left join n.actor a left join n.post p
             where n.recipient.id = :userId and n.readAt is null
-              and n.actor.status = com.project.Xclone_backend.user.AccountStatus.ACTIVE
+              and (a is null or (a.status = com.project.Xclone_backend.user.AccountStatus.ACTIVE
+                   and not exists (select 1 from Block b
+                        where (b.blocker.id = :userId and b.blocked.id = a.id)
+                           or (b.blocker.id = a.id and b.blocked.id = :userId))
+                   and not exists (select 1 from Mute m where m.muter.id = :userId and m.muted.id = a.id)))
               and (p is null or p.deleted = false)
-              and not exists (select 1 from Block b
-                   where (b.blocker.id = :userId and b.blocked.id = n.actor.id)
-                      or (b.blocker.id = n.actor.id and b.blocked.id = :userId))
-              and not exists (select 1 from Mute m where m.muter.id = :userId and m.muted.id = n.actor.id)
             """)
     long countUnread(Long userId);
 

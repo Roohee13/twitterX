@@ -58,6 +58,21 @@ public class NotificationService {
         }
     }
 
+    /**
+     * A moderation message with no actor: skips the self/block/mute rules (there is nobody to block) and is pushed live
+     * after commit like any other notification.
+     */
+    @Transactional
+    public void notifySystem(User recipient, NotificationType type, Post post, String detail) {
+        Notification n = new Notification();
+        n.setRecipient(recipient);
+        n.setType(type);
+        n.setPost(post);
+        n.setDetail(detail);
+        notificationRepository.save(n);
+        events.publishEvent(new NotificationCreatedEvent(recipient.getId(), toResponse(n)));
+    }
+
     @Transactional
     public void removeFollow(Long actorId, Long recipientId) {
         notificationRepository.deleteFollow(actorId, recipientId);
@@ -128,8 +143,9 @@ public class NotificationService {
 
     private NotificationResponse toResponse(Notification n) {
         Post post = n.getPost();
-        return new NotificationResponse(n.getId(), n.getType(), userMapper.toSummary(n.getActor()),
-                post == null ? null : post.getId(), post == null ? null : post.getContent(),
+        return new NotificationResponse(n.getId(), n.getType(),
+                n.getActor() == null ? null : userMapper.toSummary(n.getActor()),
+                post == null ? null : post.getId(), post == null ? null : post.getContent(), n.getDetail(),
                 n.getReadAt() != null, n.getCreatedAt());
     }
 }

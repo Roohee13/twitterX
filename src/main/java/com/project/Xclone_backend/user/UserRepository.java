@@ -20,6 +20,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     boolean existsByEmail(String email);
 
+    /** The admins who should hear about new reports. */
+    List<User> findByAdminTrueAndStatus(AccountStatus status);
+
     boolean existsByIdAndStatus(Long id, AccountStatus status);
 
     /** {@code prefix} must already be lowercased, LIKE-escaped and end with {@code %}. */

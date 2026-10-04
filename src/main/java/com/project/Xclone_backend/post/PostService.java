@@ -29,7 +29,9 @@ import com.project.Xclone_backend.post.PostDtos.CreatePostRequest;
 import com.project.Xclone_backend.post.PostDtos.CreateThreadRequest;
 import com.project.Xclone_backend.post.PostDtos.PostResponse;
 import com.project.Xclone_backend.post.PostDtos.UpdatePostRequest;
+import com.project.Xclone_backend.report.ModerationNotifier;
 import com.project.Xclone_backend.report.PostReportRepository;
+import com.project.Xclone_backend.report.ReportStatus;
 import com.project.Xclone_backend.report.ReportReason;
 import com.project.Xclone_backend.user.User;
 import com.project.Xclone_backend.user.UserDtos.UserSummary;
@@ -53,6 +55,7 @@ public class PostService {
     private final MediaService mediaService;
     private final HashtagService hashtagService;
     private final PostReportRepository postReportRepository;
+    private final ModerationNotifier moderationNotifier;
     private final BookmarkRepository bookmarkRepository;
     private final MentionService mentionService;
     private final NotificationService notificationService;
@@ -200,23 +203,35 @@ public class PostService {
         if (!post.getAuthor().getId().equals(userId)) {
             throw ApiException.forbidden("You can only delete your own posts");
         }
+        softDelete(post);
+    }
+
+    /**
+     * Takes a post out of circulation: marked deleted, mentions cleared, its notifications removed, and the parent's reply count
+     * lowered. Shared by an author deleting their own post and an admin removing a reported one, so they always do the same things.
+     */
+    public void softDelete(Post post) {
         post.setDeleted(true);
         post.getMentions().clear();
-        notificationService.removeForPost(postId);
+        notificationService.removeForPost(post.getId());
         if (post.getParent() != null) {
             postRepository.addToReplyCount(post.getParent().getId(), -1);
         }
     }
 
-    /** Only records the report; the reported post is not changed in any way. */
+    /** Records the report and, if the post had no open report, alerts the admins. The reported post is not changed in any way. */
     @Transactional
     public void report(Long postId, Long reporterId, ReportReason reason) {
         Post post = requireLiveVisible(postId, reporterId);
         if (post.getAuthor().getId().equals(reporterId)) {
             throw ApiException.badRequest("You cannot report your own post");
         }
+        boolean alreadyUnderReview = postReportRepository.existsByPostIdAndStatus(postId, ReportStatus.OPEN);
         if (postReportRepository.report(reporterId, postId, reason.name()) == 0) {
             throw ApiException.conflict("You have already reported this post");
+        }
+        if (!alreadyUnderReview) {
+            moderationNotifier.reportReceived("a post by @" + post.getAuthor().getUsername(), reason, post);
         }
     }
 

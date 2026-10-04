@@ -94,6 +94,8 @@ public class AuthService {
         // Checked only after the password matches, so a wrong password never changes or reveals the status.
         if (user.getStatus() == AccountStatus.DEACTIVATED) {
             user.setStatus(AccountStatus.ACTIVE);
+        } else if (user.getStatus() == AccountStatus.SUSPENDED) {
+            throw ApiException.forbidden("Account suspended");
         } else if (user.getStatus() != AccountStatus.ACTIVE) {
             throw ApiException.unauthorized("Invalid credentials");
         }

@@ -29,6 +29,8 @@ import com.project.Xclone_backend.security.ActiveUserCache;
 import com.project.Xclone_backend.notification.NotificationType;
 import com.project.Xclone_backend.post.PostRepository;
 import com.project.Xclone_backend.report.ReportReason;
+import com.project.Xclone_backend.report.ModerationNotifier;
+import com.project.Xclone_backend.report.ReportStatus;
 import com.project.Xclone_backend.report.UserReportRepository;
 import com.project.Xclone_backend.user.UserDtos.ChangeEmailRequest;
 import com.project.Xclone_backend.user.UserDtos.ChangePasswordRequest;
@@ -55,6 +57,7 @@ public class UserService {
     private final UserMapper userMapper;
     private final MediaService mediaService;
     private final UserReportRepository userReportRepository;
+    private final ModerationNotifier moderationNotifier;
     private final PasswordEncoder passwordEncoder;
     private final RefreshTokenRepository refreshTokenRepository;
     private final PostRepository postRepository;
@@ -67,7 +70,7 @@ public class UserService {
 
     public User requireByUsername(String username) {
         return userRepository.findByUsername(username.toLowerCase(Locale.ROOT))
-                .filter(u -> u.getStatus() != AccountStatus.DELETED)
+                .filter(u -> u.getStatus() != AccountStatus.DELETED && u.getStatus() != AccountStatus.SUSPENDED)
                 .orElseThrow(() -> ApiException.notFound("User not found"));
     }
 
@@ -182,7 +185,35 @@ public class UserService {
     public void deleteAccount(Long userId, DeleteAccountRequest req) {
         User user = requireById(userId);
         requirePassword(user, req.password());
+        anonymize(user);
+    }
 
+    /** Admin-initiated removal: the same irreversible anonymization as {@link #deleteAccount}, without the password. */
+    @Transactional
+    public void removeAccountByAdmin(Long userId) {
+        anonymize(requireById(userId));
+    }
+
+    /** Admin suspension: no sign-in, hidden from others, all sessions end; reversible with {@link #unsuspend}. */
+    @Transactional
+    public void suspend(Long userId) {
+        User user = requireById(userId);
+        user.setStatus(AccountStatus.SUSPENDED);
+        refreshTokenRepository.revokeAllForUser(userId);
+        activeUserCache.evictAfterCommit(userId);
+    }
+
+    @Transactional
+    public void unsuspend(Long userId) {
+        User user = requireById(userId);
+        if (user.getStatus() == AccountStatus.SUSPENDED) {
+            user.setStatus(AccountStatus.ACTIVE);
+        }
+        activeUserCache.evictAfterCommit(userId);
+    }
+
+    private void anonymize(User user) {
+        Long userId = user.getId();
         postRepository.decrementReplyCountsForAuthor(userId);
         postRepository.decrementLikeCountsForLiker(userId);
         postRepository.decrementRepostCountsForReposter(userId);
@@ -266,15 +297,19 @@ public class UserService {
         return FollowResult.FOLLOWING;
     }
 
-    /** Only records the report; the reported user is not changed in any way. */
+    /** Records the report and, if the account had no open report, alerts the admins. The reported user is not changed in any way. */
     @Transactional
     public void report(Long reporterId, String username, ReportReason reason) {
         User target = requireByUsername(username);
         if (target.getId().equals(reporterId)) {
             throw ApiException.badRequest("You cannot report yourself");
         }
+        boolean alreadyUnderReview = userReportRepository.existsByReportedUserIdAndStatus(target.getId(), ReportStatus.OPEN);
         if (userReportRepository.report(reporterId, target.getId(), reason.name()) == 0) {
             throw ApiException.conflict("You have already reported this user");
+        }
+        if (!alreadyUnderReview) {
+            moderationNotifier.reportReceived("account @" + target.getUsername(), reason, null);
         }
     }
 
@@ -321,6 +356,9 @@ public class UserService {
 
     /** The posts and follower lists of a protected account are visible to its owner and approved followers only. */
     public boolean canViewPosts(Long viewerId, User owner) {
+        if (owner.getStatus() == AccountStatus.SUSPENDED) {
+            return false;
+        }
         if (!owner.isProtectedAccount()) {
             return true;
         }
@@ -329,6 +367,9 @@ public class UserService {
     }
 
     public void requireCanViewPosts(Long viewerId, User owner) {
+        if (owner.getStatus() == AccountStatus.SUSPENDED) {
+            throw ApiException.notFound("User not found");
+        }
         if (!canViewPosts(viewerId, owner)) {
             throw ApiException.forbidden("This account is protected");
         }
