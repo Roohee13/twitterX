@@ -66,6 +66,8 @@ Email links open `/verify-email?token=...` and `/reset-password?token=...`; thos
 
 ## 3. Image uploads (R2 bucket CORS)
 
+The full Cloudflare walkthrough (bucket, public access, API token, settings) is in the README, *Cloudflare R2 setup*. After deploying, an admin can confirm everything with **Settings > Image storage > Check image storage**, which also tests the CORS rule from the browser.
+
 Browsers upload straight to the bucket with a presigned URL, so the bucket needs a CORS rule for the **frontend** origin:
 
 ```json

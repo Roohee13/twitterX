@@ -8,6 +8,8 @@ import org.springframework.context.annotation.Configuration;
 
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.core.checksums.RequestChecksumCalculation;
+import software.amazon.awssdk.core.checksums.ResponseChecksumValidation;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3Configuration;
@@ -23,6 +25,10 @@ public class R2Config {
     @Bean(destroyMethod = "close")
     S3Client r2Client(R2Properties props) {
         return S3Client.builder()
+                // Newer AWS SDK versions add checksum trailers to uploads and checks to downloads by default. R2 does not support those
+                // (Cloudflare's own Java guidance), so only do them where the S3 API requires them.
+                .requestChecksumCalculation(RequestChecksumCalculation.WHEN_REQUIRED)
+                .responseChecksumValidation(ResponseChecksumValidation.WHEN_REQUIRED)
                 .endpointOverride(URI.create(props.endpoint()))
                 .region(R2_REGION)
                 .credentialsProvider(credentials(props))

@@ -31,14 +31,14 @@ import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
 /**
- * The admin "send test email" endpoint: who may use it, where the message goes, and how each outcome is reported. What really happens on
+ * The admin diagnostics endpoints ("send test email", "check image storage"): who may use them, where the message goes, and how each outcome is reported. What really happens on
  * the wire (login, timeouts, what arrives) is covered against an embedded SMTP server in EmailSenderTest. This class deliberately uses the
  * same mocked beans as AdminReportsTest so both share one Spring context (every extra context makes the test JVM slower to shut down).
  */
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-class AdminEmailTest {
+class AdminToolsTest {
 
     @Autowired
     MockMvc mvc;
@@ -111,5 +111,31 @@ class AdminEmailTest {
         mvc.perform(post("/api/admin/email/test")).andExpect(status().isUnauthorized());
         callTest(normal).andExpect(status().isForbidden()).andExpect(jsonPath("$.detail").value("Admins only"));
         verify(emailSender, never()).sendNow(anyString(), anyString(), anyString());
+    }
+
+    // --- image storage check ---
+
+    @Test
+    void theStorageCheckIsForAdminsOnly() throws Exception {
+        Account normal = register(false);
+
+        mvc.perform(post("/api/admin/storage/check")).andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/admin/storage/check").header("Authorization", "Bearer " + normal.token())).andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.detail").value("Admins only"));
+    }
+
+    @Test
+    void anAdminWithoutStorageSettingsGetsAClearFirstStepInsteadOfAnError() throws Exception {
+        Account admin = register(true);
+
+        // (The test configuration has no R2 settings.)
+        mvc.perform(post("/api/admin/storage/check").header("Authorization", "Bearer " + admin.token()).contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.ok").value(false))
+                .andExpect(jsonPath("$.steps[0].id").value("config")).andExpect(jsonPath("$.steps[0].ok").value(false))
+                .andExpect(jsonPath("$.steps[0].detail").value(Matchers.containsString("R2_ACCOUNT_ID")))
+                .andExpect(jsonPath("$.steps.length()").value(1));
+        // The browser part answers the same way, and a malformed key cannot get past validation.
+        mvc.perform(post("/api/admin/storage/check").header("Authorization", "Bearer " + admin.token()).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"browserTestKey\":\"" + "x".repeat(301) + "\"}")).andExpect(status().isBadRequest());
     }
 }

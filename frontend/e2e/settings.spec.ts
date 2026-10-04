@@ -180,6 +180,29 @@ test.describe('email delivery check', () => {
   })
 })
 
+test.describe('image storage check', () => {
+  test('only admins see it; with no R2 settings it lists exactly what is missing (the e2e backend has none)', async ({ page, request, browser }) => {
+    const normal = await createUser(request)
+    await signIn(page, normal, '/settings')
+    await expect(form(page, 'Password')).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Image storage' })).toHaveCount(0)
+
+    const admin = await createUser(request, { displayName: 'Ada Storage' })
+    await setAdmin(admin.username)
+    const adminPage = await (await browser.newContext()).newPage()
+    await signIn(adminPage, admin, '/settings')
+    const section = adminPage.getByRole('region', { name: 'Image storage' })
+    await section.getByRole('button', { name: 'Check image storage' }).click()
+
+    const results = section.getByRole('list', { name: 'Check results' })
+    await expect(results.getByText('Storage settings')).toBeVisible()
+    await expect(results).toContainText('Not set: R2_ACCOUNT_ID, R2_ACCESS_KEY, R2_SECRET_KEY')
+    await expect(results.getByLabel('Failed')).toHaveCount(1) // it stops at the first problem
+    await results.scrollIntoViewIfNeeded()
+    await adminPage.screenshot(shot('settings-storage-check'))
+  })
+})
+
 test.describe('on a phone', () => {
   test.use({ viewport: { width: 390, height: 780 } })
 

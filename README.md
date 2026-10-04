@@ -116,13 +116,51 @@ take instances out of rotation.
 
 ## Cloudflare R2 setup
 
-1. Create a bucket and an R2 API token with Object Read & Write access.
-2. Enable public access (the r2.dev subdomain or a custom domain) and set `R2_PUBLIC_BASE_URL` to it.
-3. Add a CORS policy on the bucket so browsers can upload directly:
+Pictures (post images, avatars, banners) are stored in a Cloudflare R2 bucket. The browser uploads straight to the bucket with a short-lived signed address
+the backend hands out, and visitors load the pictures from the bucket's public address. R2's free tier (10 GB of storage, free downloads) is plenty to start,
+but Cloudflare asks for a payment method when you enable R2. Cloudflare renames menus now and then, so the names below may differ a little.
 
-```json
-[{ "AllowedOrigins": ["http://localhost:5173"], "AllowedMethods": ["PUT"], "AllowedHeaders": ["content-type", "content-length"], "MaxAgeSeconds": 3600 }]
-```
+1. **Enable R2.** Sign in at https://dash.cloudflare.com, open **R2 Object Storage** in the sidebar and follow the prompts to enable it.
+2. **Create a bucket.** *Create bucket*, name it (lowercase letters, digits and dashes, e.g. `xclone-media`), leave the location on automatic.
+3. **Turn on public access** so visitors can see the pictures: open the bucket > **Settings** > **Public access** > **R2.dev subdomain** > *Allow access*.
+   Copy the **Public R2.dev Bucket URL** (like `https://pub-1234abcd….r2.dev`), with no slash and no folder at the end. This is `R2_PUBLIC_BASE_URL`.
+   (r2.dev addresses are rate-limited and meant for development. For production attach your own domain under *Custom domains* instead.)
+4. **Allow your website to upload (CORS).** Same page: **CORS Policy** > *Add CORS policy* and paste the rule below, with the address your frontend runs on
+   (`http://localhost:5173` while developing; add the real site address too when you deploy):
+
+   ```json
+   [{ "AllowedOrigins": ["http://localhost:5173"], "AllowedMethods": ["PUT"], "AllowedHeaders": ["content-type", "content-length"], "MaxAgeSeconds": 3600 }]
+   ```
+
+5. **Create an API token.** R2 overview page > **Manage API tokens** > *Create API token*. Permission **Object Read & Write**, limited to your bucket. After creating it Cloudflare
+   shows the **Access Key ID** and the **Secret Access Key**: copy the secret now, it is shown only once. (If you lose it, delete the token and make a new one.)
+   Your **Account ID** is the 32-character id on the R2 overview page (it is also in the address of the dashboard).
+6. **Give the backend the settings.** In IntelliJ: Run > Edit Configurations > your Spring Boot configuration > Environment variables (on a host: its environment or
+   secrets settings). **Never write them into a file in the repository.**
+
+   ```
+   R2_ACCOUNT_ID=<the 32-character Account ID>
+   R2_ACCESS_KEY=<Access Key ID>
+   R2_SECRET_KEY=<Secret Access Key>
+   R2_BUCKET=<the bucket name, e.g. xclone-media>
+   R2_PUBLIC_BASE_URL=<the public bucket URL from step 3>
+   ```
+
+7. **Restart the backend and check it.** Sign in as an admin, open **Settings > Image storage** and press **Check image storage**. It checks the settings, uploads a tiny test image from the
+   server, reads it back through the public address, then repeats the upload from your browser (that part tests the CORS rule) and deletes the test image. Each step shows a tick or a cross with
+   what to change. When everything is green, upload a profile picture or a post image to see it for real.
+
+| Failed step | Usually means |
+|---|---|
+| Storage settings | one of `R2_ACCOUNT_ID`, `R2_ACCESS_KEY`, `R2_SECRET_KEY` is not set in the process that is running (restart it after changing the environment) |
+| Upload a test image: could not reach … | the Account ID is wrong (the address is `https://<account id>.r2.cloudflarestorage.com`), or no internet access |
+| … `InvalidAccessKeyId` / `SignatureDoesNotMatch` | the Access Key ID or the Secret Access Key was copied wrongly, or belongs to another account |
+| … `AccessDenied` | the token is not **Object Read & Write**, or is limited to a different bucket |
+| … `NoSuchBucket` | `R2_BUCKET` does not match the bucket's name exactly |
+| Public address (HTTP 403 / 404) | public access is not enabled for the bucket, or `R2_PUBLIC_BASE_URL` is wrong (pictures would show as broken) |
+| Image uploaded from your browser | the bucket's CORS rule does not allow the address your site runs on (the check shows the exact rule to paste) |
+
+For another S3-compatible server (for example a local MinIO) set `R2_ENDPOINT` to its address; leave it empty for Cloudflare.
 
 ### Image upload flow
 

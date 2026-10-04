@@ -12,9 +12,14 @@ public record R2Properties(
         String bucket,
         String publicBaseUrl,
         Duration presignTtl,
-        long maxImageBytes) {
+        long maxImageBytes,
+        /** Empty for Cloudflare (the endpoint is derived from the account id). Set it only to point at another S3-compatible server, such as a local MinIO. */
+        String endpointOverride) {
 
     public String endpoint() {
+        if (endpointOverride != null && !endpointOverride.isBlank()) {
+            return endpointOverride.strip();
+        }
         return "https://" + accountId + ".r2.cloudflarestorage.com";
     }
 

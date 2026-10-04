@@ -188,3 +188,17 @@ export interface AdminPostView {
 export interface AdminPostReport extends AdminReportBase {
   post: AdminPostView
 }
+
+/** One line of the admin "check image storage" result; `hint` says what to change when `ok` is false. */
+export interface StorageStep {
+  id: string
+  label: string
+  ok: boolean
+  detail: string
+  hint: string | null
+}
+
+export interface StorageCheckResponse {
+  ok: boolean
+  steps: StorageStep[]
+}

@@ -31,6 +31,7 @@ API_BASE=http://localhost:8080 npm run seed
 Emails (verification, password reset): without any mail setting the backend only logs the link; look for `Email not sent (no SMTP configured)` in its console.
 To send real email set up Gmail with an App Password as described in the Email section of the main README, then check it with an admin account under
 Settings > Email delivery > Send test email.
+Picture uploads need a Cloudflare R2 bucket (README, *Cloudflare R2 setup*); an admin can check it under Settings > Image storage > Check image storage.
 
 ## Checks
 

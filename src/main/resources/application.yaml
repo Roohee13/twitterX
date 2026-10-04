@@ -102,6 +102,8 @@ app:
     public-base-url: ${R2_PUBLIC_BASE_URL:}
     presign-ttl: ${R2_PRESIGN_TTL:10m}
     max-image-bytes: ${R2_MAX_IMAGE_BYTES:5242880}
+    # Leave empty for Cloudflare R2. Only for another S3-compatible server (a local MinIO, for instance).
+    endpoint-override: ${R2_ENDPOINT:}
   mail:
     from: ${MAIL_FROM:no-reply@xclone.local}
     frontend-url: ${FRONTEND_URL:http://localhost:5173}

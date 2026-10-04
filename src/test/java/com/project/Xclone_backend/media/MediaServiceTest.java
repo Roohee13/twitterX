@@ -35,7 +35,7 @@ import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignReques
 class MediaServiceTest {
 
     private final R2Properties props = new R2Properties("acct", "ak", "sk", "bucket", "https://cdn.example/",
-            Duration.ofMinutes(10), 5_000_000);
+            Duration.ofMinutes(10), 5_000_000, "");
 
     private S3Client s3;
     private S3Presigner presigner;

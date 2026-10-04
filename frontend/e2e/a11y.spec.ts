@@ -96,6 +96,9 @@ test.describe('signed in', () => {
     await expect(adminPage.getByRole('region', { name: 'Email delivery' })).toBeVisible()
     await ready(adminPage)
     await expectAccessible(adminPage, 'settings with the admin email tool')
+    await adminPage.getByRole('button', { name: 'Check image storage' }).click()
+    await expect(adminPage.getByRole('list', { name: 'Check results' })).toBeVisible()
+    await expectAccessible(adminPage, 'settings with the image storage result')
   })
 
   test('dialogs and menus', async ({ page, request }) => {
