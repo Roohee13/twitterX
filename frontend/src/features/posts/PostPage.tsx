@@ -14,6 +14,7 @@ import { Composer } from '../compose/Composer'
 import { usePostsCreated } from '../compose/ComposeContext'
 import { PageHeader } from '../shell/PageHeader'
 import { LikersDialog } from './LikersDialog'
+import { RepostersDialog } from './RepostersDialog'
 import { PostActionBar } from './PostActionBar'
 import { PostCard, postKey, QuotedPost } from './PostCard'
 import { PostMenuThatLeavesOnDelete } from './PostMenu'
@@ -75,6 +76,7 @@ function ReplyArea({ post }: { post: PostResponse }) {
 
 function FocusedPost({ post }: { post: PostResponse }) {
   const [showLikers, setShowLikers] = useState(false)
+  const [showReposters, setShowReposters] = useState(false)
   return (
     <article aria-label={`Post by ${post.author.displayName}`} className="border-b border-zinc-800 px-4 pt-3">
       <div className="flex items-center gap-3">
@@ -90,7 +92,11 @@ function FocusedPost({ post }: { post: PostResponse }) {
       {post.quotedPost && <QuotedPost post={post.quotedPost} />}
       <p className="mt-3 text-[15px] text-zinc-500"><time dateTime={post.createdAt}>{fullDate(post.createdAt)}</time></p>
       <div className="mt-3 flex gap-5 border-y border-zinc-800 py-3 text-[15px]" aria-label="Post statistics" role="group">
-        <span><strong>{post.repostCount}</strong> <span className="text-zinc-500">{post.repostCount === 1 ? 'Repost' : 'Reposts'}</span></span>
+        {post.repostCount > 0 ? (
+          <button type="button" onClick={() => setShowReposters(true)} className="hover:underline"><strong>{post.repostCount}</strong> <span className="text-zinc-500">{post.repostCount === 1 ? 'Repost' : 'Reposts'}</span></button>
+        ) : (
+          <span><strong>0</strong> <span className="text-zinc-500">Reposts</span></span>
+        )}
         {post.likeCount > 0 ? (
           <button type="button" onClick={() => setShowLikers(true)} className="hover:underline"><strong>{post.likeCount}</strong> <span className="text-zinc-500">{post.likeCount === 1 ? 'Like' : 'Likes'}</span></button>
         ) : (
@@ -99,6 +105,7 @@ function FocusedPost({ post }: { post: PostResponse }) {
         <span><strong>{post.replyCount}</strong> <span className="text-zinc-500">{post.replyCount === 1 ? 'Reply' : 'Replies'}</span></span>
       </div>
       <div className="flex justify-around py-1"><PostActionBar post={post} /></div>
+      {showReposters && <RepostersDialog postId={post.id} onClose={() => setShowReposters(false)} />}
       {showLikers && <LikersDialog postId={post.id} onClose={() => setShowLikers(false)} />}
     </article>
   )

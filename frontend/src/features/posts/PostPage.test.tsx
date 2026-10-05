@@ -182,6 +182,26 @@ describe('PostPage: likes and your own post', () => {
     expect(within(dialog).getByRole('link', { name: /Fan Two/ })).toBeInTheDocument()
   })
 
+  it('lists the people who reposted it, and an unavailable account is a plain row', async () => {
+    serve(makePost({ id: 5, repostCount: 2 }))
+    server.use(http.get(`${BASE}/api/posts/5/reposts`, () => page([makeUser({ id: 31, username: 'sharer_one', displayName: 'Sharer One' }), makeUser({ id: 32, username: '', displayName: 'XClone user', unavailable: true })])))
+    open('/post/5')
+
+    await userEvent.click(await screen.findByRole('button', { name: '2 Reposts' }))
+
+    const dialog = await screen.findByRole('dialog', { name: 'Reposted by' })
+    expect(within(dialog).getByRole('link', { name: /Sharer One/ })).toHaveAttribute('href', '/u/sharer_one')
+    expect(within(dialog).getByText('XClone user')).toBeInTheDocument()
+    expect(within(dialog).getAllByRole('link')).toHaveLength(1)
+  })
+
+  it('has no reposters list when nobody reposted it', async () => {
+    serve(makePost({ id: 5, repostCount: 0 }))
+    open('/post/5')
+    await screen.findByRole('article', { name: 'Post by Bob Builder' })
+    expect(screen.queryByRole('button', { name: /^\d+ Reposts?$/ })).not.toBeInTheDocument()
+  })
+
   it('has no likers list when nobody liked it', async () => {
     serve(makePost({ id: 5, likeCount: 0 }))
     open('/post/5')

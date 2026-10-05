@@ -138,6 +138,13 @@ public class PostController {
         postService.unlike(id, me.id());
     }
 
+    /** Who reposted a post, newest first: the list behind the repost count. */
+    @GetMapping("/posts/{id}/reposts")
+    public CursorPage<UserSummary> reposters(@PathVariable Long id, @AuthenticationPrincipal AuthUser me,
+            @RequestParam(required = false) Long cursor, @RequestParam(required = false) Integer limit) {
+        return postService.reposters(id, idOf(me), cursor, limit);
+    }
+
     @GetMapping("/posts/{id}/likes")
     public CursorPage<UserSummary> likers(@PathVariable Long id, @AuthenticationPrincipal AuthUser me,
             @RequestParam(required = false) Long cursor, @RequestParam(required = false) Integer limit) {

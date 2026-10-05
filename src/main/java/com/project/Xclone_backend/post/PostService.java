@@ -315,6 +315,15 @@ public class PostService {
         return CursorPage.of(rows, n, Post::getId, page -> postMapper.toResponses(page, viewerId));
     }
 
+    /** The people who reposted a post (plain reposts, the ones counted in {@code repostCount}), newest first. */
+    @Transactional(readOnly = true)
+    public CursorPage<UserSummary> reposters(Long postId, Long viewerId, Long cursor, Integer limit) {
+        requireLiveVisible(postId, viewerId);
+        int n = CursorPage.clampLimit(limit);
+        List<Post> rows = postRepository.findReposts(postId, viewerId, CursorPage.cursorOrMax(cursor), Limit.of(n + 1));
+        return CursorPage.of(rows, n, Post::getId, page -> page.stream().map(p -> userMapper.toSummary(p.getAuthor())).toList());
+    }
+
     @Transactional(readOnly = true)
     public CursorPage<UserSummary> likers(Long postId, Long viewerId, Long cursor, Integer limit) {
         requireLiveVisible(postId, viewerId);

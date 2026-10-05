@@ -210,6 +210,7 @@ All endpoints are under `/api`. Send `Authorization: Bearer <accessToken>` for a
 | GET | `/posts/{id}/replies` | optional | paged, oldest first. Every post response includes `conversationId`, `replyPolicy` and `canReply` (for the viewer), plus `likedByMe`, `repostedByMe` and `bookmarkedByMe` for the post shown |
 | POST / DELETE | `/posts/{id}/like` | ✓ | idempotent |
 | GET | `/posts/{id}/likes` | – | users who liked, paged |
+| GET | `/posts/{id}/reposts` | – | users who reposted (plain reposts, newest first), paged; blocked, inactive and hidden protected accounts left out |
 | GET | `/notifications` | ✓ | follow / like / reply / mention notifications, newest first, paged; hides blocked or inactive actors |
 | GET | `/notifications/unread-count` | ✓ | |
 | POST | `/notifications/read`, `/notifications/{id}/read` | ✓ | mark all / one as read |

@@ -66,6 +66,21 @@ public interface PostRepository extends JpaRepository<Post, Long> {
             """)
     List<Post> findReplies(Long parentId, Long viewerId, long cursor, Limit limit);
 
+    /**
+     * The repost rows of a post, newest first (each row's author is the person who reposted it). Skips reposters blocked either way with the
+     * viewer, inactive ones, and protected reposters the viewer may not see (their reposts are not shown to the viewer anywhere else either).
+     */
+    @Query("""
+            select p from Post p join fetch p.author
+            where p.repostOf.id = :postId and p.deleted = false and p.id < :cursor
+              and (:viewerId is null or not exists (select 1 from Block b
+                   where (b.blocker.id = :viewerId and b.blocked.id = p.author.id)
+                      or (b.blocker.id = p.author.id and b.blocked.id = :viewerId)))
+              and """ + PostVisibility.POST_VISIBLE + """
+            order by p.id desc
+            """)
+    List<Post> findReposts(Long postId, Long viewerId, long cursor, Limit limit);
+
     /** Posts and replies tagged with a normalized hashtag name, newest first. */
     @Query("""
             select p from Post p join fetch p.author join p.hashtags h

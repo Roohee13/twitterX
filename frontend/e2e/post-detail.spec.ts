@@ -93,6 +93,32 @@ test.describe('the post page', () => {
     await page.screenshot(shot('detail-likers'))
   })
 
+  test('who reposted it: a list of people, newest first, that follows an undone repost', async ({ page, request }) => {
+    const author = await createUser(request)
+    const ben = await createUser(request, { displayName: 'Benny Sharer' })
+    const cy = await createUser(request, { displayName: 'Cyrus Sharer' })
+    const post = await as(request, author).post('shared by two people')
+    await as(request, ben).repost(post.id)
+    await as(request, cy).repost(post.id)
+    await signIn(page, author, `/post/${post.id}`)
+
+    await page.getByRole('button', { name: '2 Reposts' }).click()
+
+    const dialog = page.getByRole('dialog', { name: 'Reposted by' })
+    await expect(dialog.getByRole('link')).toHaveText([/Cyrus Sharer/, /Benny Sharer/])
+    await page.screenshot(shot('detail-reposters'))
+    await dialog.getByRole('link', { name: /Benny Sharer/ }).click()
+    await expect(page).toHaveURL(new RegExp(`/u/${ben.username}$`))
+  })
+
+  test('the repost count is not a button while nobody has reposted', async ({ page, request }) => {
+    const author = await createUser(request)
+    const post = await as(request, author).post('nobody shared this')
+    await signIn(page, author, `/post/${post.id}`)
+    await expect(page.getByRole('group', { name: 'Post statistics' })).toContainText('0 Reposts')
+    await expect(page.getByRole('button', { name: /Reposts?$/ }).filter({ hasText: /^\d+ Reposts?$/ })).toHaveCount(0)
+  })
+
   test('when the author limits replies you see why instead of a reply box', async ({ page, request }) => {
     const viewer = await createUser(request)
     const author = await createUser(request)
