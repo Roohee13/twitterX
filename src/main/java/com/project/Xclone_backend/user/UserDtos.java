@@ -18,18 +18,23 @@ public final class UserDtos {
             boolean admin) {
     }
 
-    /** Compact user embedded in posts and user lists. */
+    /**
+     * Compact user embedded in posts and user lists. {@code unavailable}: the account is deactivated (or suspended or removed), so this is the
+     * blank "XClone user" (no handle, picture or anything else); clients must not link to it.
+     */
     public record UserSummary(Long id, String username, String displayName, String avatarUrl,
-            boolean protectedAccount) {
+            boolean protectedAccount, boolean unavailable) {
     }
 
     /** {@code mutualFollowCount}: how many people you follow follow this account (0 for popular-account fallbacks). */
     public record SuggestionResponse(UserSummary user, long mutualFollowCount) {
     }
 
+    /** {@code unavailable}: a deactivated account. Everything else is then empty (and {@code createdAt} null): only the name "XClone user" is shown. */
     public record ProfileResponse(Long id, String username, String displayName, String bio, String avatarUrl,
             String bannerUrl, Instant createdAt, long followerCount, long followingCount, boolean followedByMe,
-            boolean blockedByMe, boolean mutedByMe, boolean protectedAccount, boolean followRequestedByMe) {
+            boolean blockedByMe, boolean mutedByMe, boolean protectedAccount, boolean followRequestedByMe,
+            boolean unavailable) {
     }
 
     /** Null fields are left unchanged. An empty string clears bio/avatar/banner. Turning protection off approves pending follow requests. */

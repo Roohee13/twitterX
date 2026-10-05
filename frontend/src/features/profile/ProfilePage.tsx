@@ -13,6 +13,7 @@ import { PageHeader } from '../shell/PageHeader'
 import { PostCard, postKey } from '../posts/PostCard'
 import { EditProfileDialog } from './EditProfileDialog'
 import { ProfileHeader } from './ProfileHeader'
+import { UnavailableProfile } from './UnavailableProfile'
 import { profileKey, useProfile, useProfileActions } from './profileData'
 
 const TABS = [
@@ -111,7 +112,8 @@ export function ProfilePage() {
           <p className="pb-8 text-center"><Link to="/" className="font-semibold text-brand hover:underline">Go home</Link></p>
         </div>
       )}
-      {profile.isSuccess && (
+      {profile.isSuccess && profile.data.unavailable && <UnavailableProfile />}
+      {profile.isSuccess && !profile.data.unavailable && (
         <>
           <ProfileHeader profile={profile.data} onEdit={() => setEditing(true)} />
           <Body profile={profile.data} own={profile.data.id === me.id} />

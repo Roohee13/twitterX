@@ -32,9 +32,18 @@ export async function createUser(request: APIRequestContext, overrides: Partial<
  * init script: that would re-store the (already rotated, now reused) token on every navigation and the backend would
  * treat it as theft and revoke the session.
  */
-export async function signIn(page: Page, user: Pick<TestUser, 'refreshToken'>, path = '/') {
+export async function signIn(page: Page, user: Pick<TestUser, 'refreshToken'>, path = '/', homeTab: 'following' | 'for-you' | null = 'following') {
   await page.goto('/__blank') // any page on the origin, without triggering the session restore for a real route
-  await page.evaluate((token) => localStorage.setItem('xclone.refreshToken', token), user.refreshToken)
+  await page.evaluate(
+    ([token, tab]) => {
+      localStorage.setItem('xclone.refreshToken', token as string)
+      sessionStorage.removeItem('xclone.accessToken') // a previous user's access token in this tab would otherwise still be used
+      // Home opens on "For you" for a person who never chose. Most specs are about the people-you-follow timeline, so they start on Following;
+      // pass 'for-you' for the real default (or null to leave it unset).
+      if (tab) localStorage.setItem('xclone.homeTab', tab as string)
+    },
+    [user.refreshToken, homeTab],
+  )
   await page.goto(path)
 }
 
@@ -114,6 +123,26 @@ export async function setAdmin(username: string, admin = true) {
       ['-U', process.env.PGUSER ?? 'postgres', '-h', process.env.PGHOST ?? 'localhost', '-d', process.env.E2E_DB ?? 'xclone_e2e', '-qc', `update users set is_admin = ${admin} where username = '${username}'`],
       { env: { ...process.env, PGPASSWORD: process.env.PGPASSWORD ?? 'postgres' } },
       (error, _stdout, stderr) => (error ? reject(new Error(`could not update is_admin with psql: ${stderr || error.message}`)) : resolve()),
+    )
+  })
+}
+
+/**
+ * Gives posts a like count by one SQL update on the e2e database (real likes would need thousands of accounts). The For You feed ranks by
+ * engagement, so tests that care about ranking make their posts clearly more popular than anything other specs left behind.
+ */
+export async function setLikeCount(postIds: number[], likes: number, options: { exclusive?: boolean } = {}) {
+  if (postIds.length === 0 || postIds.some((id) => !Number.isInteger(id))) throw new Error('post ids must be integers')
+  // `exclusive`: first reset the inflated counts earlier runs left behind, so these posts are the only very popular ones and a ranking test is not
+  // at the mercy of what ran before it. (The e2e database holds nothing but test data.)
+  const reset = options.exclusive ? `update posts set like_count = 0 where like_count >= 1000000 and id not in (${postIds.join(',')}); ` : ''
+  const { execFile } = await import('node:child_process')
+  await new Promise<void>((resolve, reject) => {
+    execFile(
+      'psql',
+      ['-U', process.env.PGUSER ?? 'postgres', '-h', process.env.PGHOST ?? 'localhost', '-d', process.env.E2E_DB ?? 'xclone_e2e', '-qc', `${reset}update posts set like_count = ${Math.trunc(likes)} where id in (${postIds.join(',')})`],
+      { env: { ...process.env, PGPASSWORD: process.env.PGPASSWORD ?? 'postgres' } },
+      (error, _stdout, stderr) => (error ? reject(new Error(`could not update like_count with psql: ${stderr || error.message}`)) : resolve()),
     )
   })
 }

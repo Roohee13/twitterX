@@ -4,6 +4,7 @@ import { useToast } from '../../components/ui/Toast'
 import { ApiError, api } from '../../lib/api'
 import type { ProfileResponse } from '../../lib/types'
 import type { ReportReason } from '../common/ReportDialog'
+import { invalidateFeeds } from '../../lib/feedCache'
 
 /** Everything about one account shares this key prefix, so `invalidateQueries({ queryKey: profileKey(name) })` refreshes the page and all its tabs. */
 export const profileKey = (username: string) => ['profile', username.toLowerCase()] as const
@@ -34,7 +35,7 @@ export function useProfileActions(profile: ProfileResponse) {
   )
   const settle = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: profileKey(username) })
-    void queryClient.invalidateQueries({ queryKey: ['timeline'] }) // whose posts appear there changed
+    invalidateFeeds(queryClient) // whose posts appear there changed
   }, [queryClient, username])
 
   return useMemo(() => {

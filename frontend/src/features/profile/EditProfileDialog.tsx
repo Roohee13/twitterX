@@ -12,6 +12,7 @@ import { ALLOWED_IMAGE_TYPES } from '../../lib/upload'
 import { useAuth } from '../auth/AuthContext'
 import { profileKey } from './profileData'
 import { useImageField, type ImageField } from './useImageField'
+import { invalidateFeeds } from '../../lib/feedCache'
 
 const BIO_MAX = 160
 const NAME_MAX = 50
@@ -69,7 +70,7 @@ export function EditProfileDialog({ profile, onClose }: { profile: ProfileRespon
       const updated = await api.patch<UserResponse>('/api/users/me', body)
       setUser(updated)
       void queryClient.invalidateQueries({ queryKey: profileKey(profile.username) })
-      void queryClient.invalidateQueries({ queryKey: ['timeline'] })
+      invalidateFeeds(queryClient)
       toast('Your profile was updated.')
       onClose()
     } catch (e) {

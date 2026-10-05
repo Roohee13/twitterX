@@ -1,10 +1,15 @@
 package com.project.Xclone_backend.post;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -399,6 +404,55 @@ public class PostService {
         }
         PostMapper.ViewerFlags flags = new PostMapper.ViewerFlags(liked, reposted, bookmarked);
         return CursorPage.of(posts, n, Post::getId, page -> postMapper.toResponses(page, userId, flags));
+    }
+
+    // --- For You ---
+    // How the "For You" feed is ranked (see PostRepository.findForYouIds for the formula). Tune these in one place.
+
+    /** Only posts newer than this are candidates; older ones would need to be very popular to matter anyway. */
+    static final Duration FOR_YOU_WINDOW = Duration.ofDays(7);
+    /** The latest this many eligible posts in the window are scored. Bounds the cost of one request. */
+    static final int FOR_YOU_CANDIDATES = 2000;
+    /** At most this many posts by one author, so a single account cannot take over the feed. */
+    static final int FOR_YOU_PER_AUTHOR = 3;
+    /** The feed ends after this many posts (then nextCursor is null), like the end of a "top posts" list. */
+    static final int FOR_YOU_MAX_DEPTH = 200;
+    /** A feed is scored at one frozen minute; a cursor older than this starts a fresh feed instead. */
+    private static final long FOR_YOU_SNAPSHOT_MAX_AGE_MINUTES = 60;
+
+    /**
+     * The ranked "For You" feed. Ranking depends on the clock, so an id cursor cannot page it: the cursor packs the minute the feed was
+     * scored at and how many posts were already served ({@code snapshotMinute * 1000 + offset}), and every page is scored at that same minute.
+     * A garbage, future or stale cursor just starts a new feed.
+     */
+    @Transactional(readOnly = true)
+    public CursorPage<PostResponse> forYou(Long userId, Long cursor, Integer limit) {
+        int n = CursorPage.clampLimit(limit);
+        long nowMinute = Instant.now().getEpochSecond() / 60;
+        long snapshot = nowMinute;
+        int offset = 0;
+        if (cursor != null && cursor > 0) {
+            long cursorSnapshot = cursor / 1000;
+            long cursorOffset = cursor % 1000;
+            if (cursorSnapshot <= nowMinute && nowMinute - cursorSnapshot <= FOR_YOU_SNAPSHOT_MAX_AGE_MINUTES) {
+                snapshot = cursorSnapshot;
+                offset = (int) cursorOffset;
+            }
+        }
+        int pageSize = Math.min(n, FOR_YOU_MAX_DEPTH - offset);
+        if (pageSize <= 0) {
+            return new CursorPage<>(List.of(), null);
+        }
+        Instant scoredAt = Instant.ofEpochSecond((snapshot + 1) * 60); // the end of that minute, so posts made this minute are in
+        List<Long> ids = postRepository.findForYouIds(userId, scoredAt, scoredAt.minus(FOR_YOU_WINDOW), FOR_YOU_CANDIDATES,
+                FOR_YOU_PER_AUTHOR, offset, pageSize + 1);
+        boolean more = ids.size() > pageSize && offset + pageSize < FOR_YOU_MAX_DEPTH;
+        List<Long> pageIds = ids.size() > pageSize ? ids.subList(0, pageSize) : ids;
+        Map<Long, Post> byId = new HashMap<>();
+        postRepository.findAllWithAuthor(pageIds).forEach(p -> byId.put(p.getId(), p));
+        List<Post> posts = pageIds.stream().map(byId::get).filter(Objects::nonNull).toList();
+        Long next = more ? snapshot * 1000 + offset + pageSize : null;
+        return new CursorPage<>(postMapper.toResponses(posts, userId), next);
     }
 
     /** The author of the conversation can always reply; everyone else must satisfy the root post's policy. */

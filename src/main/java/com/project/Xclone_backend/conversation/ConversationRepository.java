@@ -43,20 +43,24 @@ public interface ConversationRepository extends JpaRepository<Conversation, Long
     }
 
     /**
-     * The inbox: conversations that have at least one message, most recently active first. The cursor is the id of the newest
+     * The inbox: conversations that have at least one message you have not deleted, most recently active first. The cursor is the id of the newest
      * message (unique per conversation, and growing with time), so paging by it is exact. Hides pairs blocked either way and
-     * conversations with a non-active participant.
+     * conversations with a removed account; one with a deactivated person stays (shown as "XClone user").
      */
     @Query(value = """
             select c.id as conversationId, lm.id as lastMessageId,
                    (select count(*) from messages m
-                    where m.conversation_id = c.id and m.sender_id <> :userId and m.read_at is null and not m.deleted) as unread
+                    where m.conversation_id = c.id and m.sender_id <> :userId and m.read_at is null and not m.deleted
+                      and m.id > case when c.user_one_id = :userId then c.user_one_cleared_before else c.user_two_cleared_before end) as unread
             from conversations c
             join users u1 on u1.id = c.user_one_id
             join users u2 on u2.id = c.user_two_id
-            join lateral (select m.id from messages m where m.conversation_id = c.id order by m.id desc limit 1) lm on true
+            join lateral (select m.id from messages m
+                          where m.conversation_id = c.id
+                            and m.id > case when c.user_one_id = :userId then c.user_one_cleared_before else c.user_two_cleared_before end
+                          order by m.id desc limit 1) lm on true
             where (c.user_one_id = :userId or c.user_two_id = :userId) and lm.id < :cursor
-              and u1.status = 'ACTIVE' and u2.status = 'ACTIVE'
+              and u1.status <> 'DELETED' and u2.status <> 'DELETED'
               and not exists (select 1 from blocks b
                    where (b.blocker_id = c.user_one_id and b.blocked_id = c.user_two_id)
                       or (b.blocker_id = c.user_two_id and b.blocked_id = c.user_one_id))
@@ -74,4 +78,14 @@ public interface ConversationRepository extends JpaRepository<Conversation, Long
     @Modifying
     @Query("update Conversation c set c.updatedAt = :now where c.id = :id")
     int touch(Long id, Instant now);
+
+    /** Hides every message up to {@code upTo} from this participant only (never moves the marker back). */
+    @Modifying
+    @Query(value = """
+            update conversations set
+              user_one_cleared_before = case when user_one_id = :userId then greatest(user_one_cleared_before, :upTo) else user_one_cleared_before end,
+              user_two_cleared_before = case when user_two_id = :userId then greatest(user_two_cleared_before, :upTo) else user_two_cleared_before end
+            where id = :id
+            """, nativeQuery = true)
+    int clearFor(Long id, Long userId, long upTo);
 }

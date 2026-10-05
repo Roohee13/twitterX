@@ -55,9 +55,9 @@ public class MessageService {
      */
     @Transactional(readOnly = true)
     public CursorPage<MessageResponse> list(Long meId, Long conversationId, Long cursor, Integer limit) {
-        conversationService.requireAccessible(meId, conversationId);
+        long clearedBefore = conversationService.requireReadable(meId, conversationId).clearedBeforeFor(meId);
         int size = CursorPage.clampLimit(limit);
-        List<Message> rows = messageRepository.findPage(conversationId, CursorPage.cursorOrMax(cursor),
+        List<Message> rows = messageRepository.findPage(conversationId, CursorPage.cursorOrMax(cursor), clearedBefore,
                 Limit.of(size + 1));
         return CursorPage.of(rows, size, Message::getId,
                 page -> page.stream().map(this::toResponse).collect(Collectors.collectingAndThen(Collectors.toList(), l -> {
@@ -98,8 +98,9 @@ public class MessageService {
     }
 
     private Message requireOwnMessage(Long meId, Long conversationId, Long messageId) {
-        conversationService.requireAccessible(meId, conversationId);
+        Conversation conversation = conversationService.requireAccessible(meId, conversationId);
         Message message = messageRepository.findInConversation(messageId, conversationId)
+                .filter(m -> m.getId() > conversation.clearedBeforeFor(meId)) // one the person deleted with the conversation is gone for them
                 .orElseThrow(() -> ApiException.notFound("Message not found"));
         if (!message.getSender().getId().equals(meId)) {
             throw ApiException.forbidden("You can only change your own messages");
@@ -116,8 +117,8 @@ public class MessageService {
 
     @Transactional(readOnly = true)
     public UnreadCountResponse unreadCount(Long meId, Long conversationId) {
-        conversationService.requireAccessible(meId, conversationId);
-        return new UnreadCountResponse(messageRepository.countUnread(conversationId, meId));
+        long clearedBefore = conversationService.requireReadable(meId, conversationId).clearedBeforeFor(meId);
+        return new UnreadCountResponse(messageRepository.countUnread(conversationId, meId, clearedBefore));
     }
 
     @Transactional(readOnly = true)
@@ -128,7 +129,7 @@ public class MessageService {
     /** Idempotent; marks the other participant's messages as read. */
     @Transactional
     public void markRead(Long meId, Long conversationId) {
-        conversationService.requireAccessible(meId, conversationId);
+        conversationService.requireReadable(meId, conversationId);
         messageRepository.markRead(conversationId, meId, Instant.now());
     }
 

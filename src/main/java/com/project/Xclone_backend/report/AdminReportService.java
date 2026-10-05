@@ -189,11 +189,11 @@ public class AdminReportService {
     }
 
     private UserSummary summary(User user) {
-        return user == null ? null : userMapper.toSummary(user);
+        return user == null ? null : userMapper.toSummaryForAdmin(user); // admins see who a report is about, whatever the account's status
     }
 
     private AdminPostView view(Post post) {
-        return new AdminPostView(post.getId(), userMapper.toSummary(post.getAuthor()), post.getContent(),
+        return new AdminPostView(post.getId(), userMapper.toSummaryForAdmin(post.getAuthor()), post.getContent(),
                 post.getMedia().stream().map(m -> r2.publicUrl(m.getR2Key())).toList(), post.getCreatedAt(), post.isDeleted());
     }
 }

@@ -1,9 +1,12 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, MoreHorizontal } from 'lucide-react'
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router'
+import { Link, useNavigate, useParams } from 'react-router'
 import { Avatar } from '../../components/ui/Avatar'
 import { Button } from '../../components/ui/Button'
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
+import { DropdownMenu } from '../../components/ui/DropdownMenu'
+import { useToast } from '../../components/ui/Toast'
 import { Spinner } from '../../components/ui/Spinner'
 import { ErrorState } from '../../components/ui/States'
 import { ApiError, api } from '../../lib/api'
@@ -14,7 +17,7 @@ import { PageHeader } from '../shell/PageHeader'
 import { MessageBubble } from './MessageBubble'
 import { MessageItem } from './MessageItem'
 import { MessageComposer } from './MessageComposer'
-import { addMessage, conversationKey, threadKey } from './messageCache'
+import { addMessage, conversationKey, removeConversationLocally, threadKey } from './messageCache'
 import { markRead } from './messageHooks'
 
 interface Pending {
@@ -35,6 +38,9 @@ export function ChatPage() {
   const counter = useRef(0)
   const queue = useRef<Promise<unknown>>(Promise.resolve())
   const end = useRef<HTMLDivElement>(null)
+  const navigate = useNavigate()
+  const toast = useToast()
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   const conversation = useQuery({
     queryKey: conversationKey(id),
@@ -75,6 +81,20 @@ export function ChatPage() {
     })
   }
 
+  /** Deletes the conversation for you only (the other person keeps theirs) and goes back to the inbox. */
+  async function deleteConversation(): Promise<boolean> {
+    try {
+      await api.delete(`/api/conversations/${id}`)
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : 'Could not delete the conversation.', 'error')
+      return false
+    }
+    navigate('/messages', { replace: true })
+    toast('Conversation deleted.')
+    void removeConversationLocally(queryClient, id)
+    return true
+  }
+
   function retry(item: Pending) {
     setPending((p) => p.filter((x) => x.key !== item.key))
     send(item.content)
@@ -96,9 +116,26 @@ export function ChatPage() {
   return (
     <>
       <PageHeader title={participant.displayName}>
+        <div className="ml-auto">
+          <DropdownMenu
+            label="Conversation actions"
+            triggerClassName="rounded-full p-2 text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"
+            trigger={<MoreHorizontal size={20} />}
+            items={[{ label: 'Delete conversation', onSelect: () => setConfirmingDelete(true), danger: true }]}
+          />
+        </div>
         <Link to="/messages" aria-label="Back to messages" className="order-first -ml-2 rounded-full p-2 hover:bg-zinc-900"><ArrowLeft size={20} /></Link>
-        <Link to={`/u/${participant.username}`} aria-label={`${participant.displayName}'s profile`} className="order-first"><Avatar src={participant.avatarUrl} name={participant.displayName} size="sm" /></Link>
+        {participant.unavailable ? (
+          <span className="order-first"><Avatar src={null} name={participant.displayName} size="sm" /></span>
+        ) : (
+          <Link to={`/u/${participant.username}`} aria-label={`${participant.displayName}'s profile`} className="order-first"><Avatar src={participant.avatarUrl} name={participant.displayName} size="sm" /></Link>
+        )}
       </PageHeader>
+      {confirmingDelete && (
+        <ConfirmDialog title="Delete this conversation?" confirmLabel="Delete" danger onConfirm={deleteConversation} onClose={() => setConfirmingDelete(false)}>
+          It disappears from your messages. {participant.displayName} keeps their copy and is not told. If they write to you again, the conversation comes back with only the new messages.
+        </ConfirmDialog>
+      )}
       <div className="flex min-h-[calc(100vh-8rem)] flex-col justify-end gap-1 px-4 py-4">
         {thread.hasNextPage && (
           <Button variant="ghost" size="sm" className="mx-auto mb-2" loading={thread.isFetchingNextPage} onClick={() => void thread.fetchNextPage()}>Load older messages</Button>
@@ -109,7 +146,7 @@ export function ChatPage() {
         {messages.map((m, i) => (
           <Fragment key={m.id}>
             {(i === 0 || day(messages[i - 1].createdAt) !== day(m.createdAt)) && <p className="my-2 text-center text-xs text-zinc-500">{dayLabel(m.createdAt)}</p>}
-            <MessageItem message={m} mine={m.sender.id === me.id} />
+            <MessageItem message={m} mine={m.sender.id === me.id} readOnly={participant.unavailable === true} />
           </Fragment>
         ))}
         {pending.map((item) => (
@@ -127,7 +164,13 @@ export function ChatPage() {
         {/* The margin keeps the newest message clear of the writing box (and, on phones, the bottom bar) that float over the page. */}
         <div ref={end} className="scroll-mb-40" />
       </div>
-      <MessageComposer onSend={send} />
+      {participant.unavailable ? (
+        <p role="status" className="sticky bottom-16 z-10 border-t border-zinc-800 bg-black px-4 py-4 text-center text-zinc-500 sm:bottom-0">
+          You can't reply to this conversation: this account is unavailable.
+        </p>
+      ) : (
+        <MessageComposer onSend={send} />
+      )}
     </>
   )
 }

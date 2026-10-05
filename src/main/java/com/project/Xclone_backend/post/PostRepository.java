@@ -112,6 +112,7 @@ public interface PostRepository extends JpaRepository<Post, Long> {
             where (p.author.id = :viewerId
                    or p.author.id in (select f.followee.id from Follow f where f.follower.id = :viewerId))
               and p.parent is null and p.deleted = false and p.id < :cursor
+              and p.author.status = com.project.Xclone_backend.user.AccountStatus.ACTIVE
               and (o is null or o.deleted = false)
               and not exists (select 1 from Mute m where m.muter.id = :viewerId
                               and (m.muted.id = p.author.id or m.muted.id = o.author.id))
@@ -119,6 +120,56 @@ public interface PostRepository extends JpaRepository<Post, Long> {
             order by p.id desc
             """)
     List<Object[]> findTimelineWithViewerFlags(Long viewerId, long cursor, Limit limit);
+
+    /** Posts by id with their authors, in no particular order (the caller puts them in rank order). */
+    @Query("select p from Post p join fetch p.author where p.id in :ids and p.deleted = false")
+    List<Post> findAllWithAuthor(Collection<Long> ids);
+
+    /**
+     * The "For You" ranking: ids of posts in rank order. Candidates are the latest {@code candidates} top-level posts since {@code since}
+     * that the viewer may see (author active; protected authors only if the viewer is or follows them; no blocks either way; no muted
+     * authors; not deleted; no replies or repost rows; the viewer's own posts count). Score is engagement over age:
+     * {@code (likes + 2*reposts + 3*replies + 1) / (age_hours + 2)^1.5}, times a boost: 2.0 for the viewer and the people they follow,
+     * 1.3 for people followed by someone they follow, else 1.0. At most {@code perAuthor} posts per author, so one account cannot flood it.
+     * Scored at the frozen instant {@code now} so every page of one feed uses the same clock.
+     */
+    @Query(value = """
+            select ranked.id from (
+              select c.id, c.score,
+                     row_number() over (partition by c.author_id order by c.score desc, c.id desc) as author_rank
+              from (
+                select p.id, p.author_id,
+                       (p.like_count + 2.0 * p.repost_count + 3.0 * p.reply_count + 1.0)
+                         / power(extract(epoch from (cast(:now as timestamptz) - p.created_at)) / 3600.0 + 2.0, 1.5)
+                         * case
+                             when p.author_id = :viewerId
+                               or exists (select 1 from follows f where f.follower_id = :viewerId and f.followee_id = p.author_id) then 2.0
+                             when exists (select 1 from follows f1 join follows f2 on f2.follower_id = f1.followee_id
+                                          where f1.follower_id = :viewerId and f2.followee_id = p.author_id) then 1.3
+                             else 1.0
+                           end as score
+                from (
+                  select p0.id, p0.author_id, p0.created_at, p0.like_count, p0.repost_count, p0.reply_count
+                  from posts p0 join users a on a.id = p0.author_id
+                  where p0.deleted = false and p0.parent_id is null and p0.repost_of_id is null
+                    and p0.created_at > cast(:since as timestamptz) and p0.created_at <= cast(:now as timestamptz)
+                    and a.status = 'ACTIVE'
+                    and (a.protected_account = false or p0.author_id = :viewerId
+                         or exists (select 1 from follows pf where pf.follower_id = :viewerId and pf.followee_id = p0.author_id))
+                    and not exists (select 1 from blocks b
+                                    where (b.blocker_id = :viewerId and b.blocked_id = p0.author_id)
+                                       or (b.blocker_id = p0.author_id and b.blocked_id = :viewerId))
+                    and not exists (select 1 from mutes m where m.muter_id = :viewerId and m.muted_id = p0.author_id)
+                  order by p0.created_at desc
+                  limit :candidates
+                ) p
+              ) c
+            ) ranked
+            where ranked.author_rank <= :perAuthor
+            order by ranked.score desc, ranked.id desc
+            offset :offset limit :limit
+            """, nativeQuery = true)
+    List<Long> findForYouIds(Long viewerId, java.time.Instant now, java.time.Instant since, int candidates, int perAuthor, int offset, int limit);
 
     @Modifying
     @Query("update Post p set p.likeCount = p.likeCount + :delta where p.id = :id")

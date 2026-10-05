@@ -499,11 +499,11 @@ class ApiIntegrationTest {
                 .andExpect(status().isUnauthorized());
         mvc.perform(auth(get("/api/users/me"), a)).andExpect(status().isUnauthorized());
 
-        // Nothing is deleted.
-        mvc.perform(get("/api/users/" + a.username())).andExpect(status().isOk());
-        mvc.perform(get("/api/posts/" + postId))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content").value("still here"));
+        // Nothing is deleted, but nobody can see it: the profile is a blank "XClone user" and the post is gone for everyone.
+        mvc.perform(get("/api/users/" + a.username())).andExpect(status().isOk())
+                .andExpect(jsonPath("$.unavailable").value(true)).andExpect(jsonPath("$.displayName").value("XClone user"))
+                .andExpect(jsonPath("$.username").value(""));
+        mvc.perform(get("/api/posts/" + postId)).andExpect(status().isNotFound());
 
         // Logging in with the correct password (by email here) reactivates and issues a normal token pair.
         String body = mvc.perform(json(post("/api/auth/login"),
@@ -517,6 +517,10 @@ class ApiIntegrationTest {
                 JsonPath.read(body, "$.refreshToken"));
 
         mvc.perform(auth(get("/api/users/me"), back)).andExpect(status().isOk());
+        // Signing in again brings the profile and the post back exactly as they were.
+        mvc.perform(get("/api/users/" + a.username())).andExpect(status().isOk()).andExpect(jsonPath("$.unavailable").value(false))
+                .andExpect(jsonPath("$.username").value(a.username()));
+        mvc.perform(get("/api/posts/" + postId)).andExpect(status().isOk()).andExpect(jsonPath("$.content").value("still here"));
         createPost(back, "{\"content\":\"back again\"}");
         mvc.perform(json(post("/api/auth/refresh"), refreshBody(back.refreshToken()))).andExpect(status().isOk());
         // Sessions revoked at deactivation stay revoked.
@@ -1233,18 +1237,22 @@ class ApiIntegrationTest {
         Account alice = register();
         Account bob = register();
         Account carol = register();
-        mvc.perform(json(auth(post("/api/conversations"), alice), convBody(bob.username())))
-                .andExpect(status().isCreated());
+        long convId = convId(alice, bob);
+        sendMessage(alice, convId, "before the deactivation");
 
         mvc.perform(auth(post("/api/users/me/deactivate"), bob)).andExpect(status().isNoContent());
 
-        // The deactivated user's token stops working; others cannot message them or see the conversation.
+        // The deactivated user's token stops working, and nobody can start a conversation with their handle any more.
         mvc.perform(auth(get("/api/conversations"), bob)).andExpect(status().isUnauthorized());
-        mvc.perform(json(auth(post("/api/conversations"), alice), convBody(bob.username())))
-                .andExpect(status().isForbidden());
-        mvc.perform(json(auth(post("/api/conversations"), carol), convBody(bob.username())))
-                .andExpect(status().isForbidden());
-        mvc.perform(auth(get("/api/conversations"), alice)).andExpect(jsonPath("$.items", hasSize(0)));
+        mvc.perform(json(auth(post("/api/conversations"), carol), convBody(bob.username()))).andExpect(status().isNotFound());
+        // The existing conversation stays in alice's inbox, with the person shown as "XClone user"; she can read it but not write to it.
+        mvc.perform(auth(get("/api/conversations"), alice)).andExpect(jsonPath("$.items", hasSize(1)))
+                .andExpect(jsonPath("$.items[0].participant.unavailable").value(true))
+                .andExpect(jsonPath("$.items[0].participant.displayName").value("XClone user"))
+                .andExpect(jsonPath("$.items[0].participant.username").value(""));
+        mvc.perform(auth(get("/api/conversations/" + convId + "/messages"), alice)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].content").value("before the deactivation"));
+        mvc.perform(json(auth(post("/api/conversations/" + convId + "/messages"), alice), msgBody("anyone there?"))).andExpect(status().isForbidden());
     }
 
     @Test

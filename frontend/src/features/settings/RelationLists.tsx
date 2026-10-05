@@ -9,6 +9,7 @@ import { ApiError, api } from '../../lib/api'
 import { useCursorQuery } from '../../lib/queries'
 import type { CursorPage, UserSummary } from '../../lib/types'
 import { profileKey } from '../profile/profileData'
+import { invalidateFeeds } from '../../lib/feedCache'
 
 type Kind = 'block' | 'mute'
 const config = {
@@ -29,7 +30,7 @@ function Row({ user, kind }: { user: UserSummary; kind: Kind }) {
       queryClient.setQueryData<InfiniteData<CursorPage<UserSummary>>>(listKey, (old) =>
         old && { ...old, pages: old.pages.map((page) => ({ ...page, items: page.items.filter((u) => u.id !== user.id) })) })
       void queryClient.invalidateQueries({ queryKey: profileKey(user.username) })
-      void queryClient.invalidateQueries({ queryKey: ['timeline'] })
+      invalidateFeeds(queryClient)
       toast(`${kind === 'block' ? 'Unblocked' : 'Unmuted'} @${user.username}.`)
     } catch (e) {
       // 404/204 style races (already undone elsewhere) just mean the list is out of date.

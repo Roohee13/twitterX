@@ -20,11 +20,11 @@ export function ConversationRow({ conversation }: { conversation: ConversationRe
       aria-label={`Conversation with ${participant.displayName}${unreadCount ? `, ${unreadCount} unread` : ''}`}
       className={`flex items-center gap-3 border-b border-zinc-800 px-4 py-3 hover:bg-hover ${unreadCount ? 'bg-brand/10' : ''}`}
     >
-      <Avatar src={participant.avatarUrl} name={participant.displayName} />
+      <Avatar src={participant.unavailable ? null : participant.avatarUrl} name={participant.displayName} />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
           <span className="truncate font-bold">{participant.displayName}</span>
-          <span className="truncate text-zinc-500">@{participant.username}</span>
+          {!participant.unavailable && <span className="truncate text-zinc-500">@{participant.username}</span>}
           {lastMessage && <time dateTime={lastMessage.createdAt} className="ml-auto shrink-0 text-sm text-zinc-500">{timeAgo(lastMessage.createdAt)}</time>}
         </div>
         <p className={`truncate ${unreadCount ? 'font-semibold text-zinc-100' : 'text-zinc-500'}`}>{preview}</p>

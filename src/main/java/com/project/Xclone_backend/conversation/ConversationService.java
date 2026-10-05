@@ -68,10 +68,39 @@ public class ConversationService {
     /** Non-participants get a 404 so the existence of other users' conversations is not revealed. */
     @Transactional(readOnly = true)
     public ConversationResponse get(Long meId, Long id) {
-        return toResponse(requireAccessible(meId, id), meId);
+        return toResponse(requireReadable(meId, id), meId);
     }
 
-    /** The caller must participate (else 404) and the other participant must be reachable (else 403). */
+    /**
+     * "Delete conversation" for one person: everything in it up to now disappears from their side (inbox, history, unread counts) and is marked
+     * read. The other person keeps their copy and is not told. A message sent afterwards (by either of them) shows up again, on its own.
+     * Allowed even when the other account is deactivated or the pair is blocked: it only changes the caller's own view.
+     */
+    @Transactional
+    public void deleteForMe(Long meId, Long id) {
+        Conversation c = conversationRepository.findByIdAndParticipant(id, meId)
+                .orElseThrow(() -> ApiException.notFound("Conversation not found"));
+        long newest = messageRepository.findFirstByConversationIdOrderByIdDesc(c.getId()).map(Message::getId).orElse(0L);
+        conversationRepository.clearFor(c.getId(), meId, newest);
+        messageRepository.markRead(c.getId(), meId, java.time.Instant.now());
+    }
+
+    /**
+     * For reading: the caller must participate (else 404) and the pair must not be blocked. A conversation with a deactivated or suspended
+     * person stays readable (your history is yours), shown with "XClone user"; one with a removed account is gone.
+     */
+    public Conversation requireReadable(Long meId, Long id) {
+        Conversation c = conversationRepository.findByIdAndParticipant(id, meId)
+                .orElseThrow(() -> ApiException.notFound("Conversation not found"));
+        User other = other(c, meId);
+        if (other.getStatus() == AccountStatus.DELETED) {
+            throw ApiException.notFound("Conversation not found");
+        }
+        userService.requireNotBlocked(meId, other.getId());
+        return c;
+    }
+
+    /** For writing (send, edit, delete): the caller must participate (else 404) and the other participant must be active and not blocked (else 403). */
     public Conversation requireAccessible(Long meId, Long id) {
         Conversation c = conversationRepository.findByIdAndParticipant(id, meId)
                 .orElseThrow(() -> ApiException.notFound("Conversation not found"));
@@ -92,8 +121,9 @@ public class ConversationService {
 
     /** For a single conversation: looks up its newest message and unread count itself. */
     private ConversationResponse toResponse(Conversation c, Long meId) {
-        return toResponse(c, meId, messageRepository.findFirstByConversationIdOrderByIdDesc(c.getId()).orElse(null),
-                messageRepository.countUnread(c.getId(), meId));
+        long cleared = c.clearedBeforeFor(meId);
+        return toResponse(c, meId, messageRepository.findFirstByConversationIdAndIdGreaterThanOrderByIdDesc(c.getId(), cleared).orElse(null),
+                messageRepository.countUnread(c.getId(), meId, cleared));
     }
 
     private ConversationResponse toResponse(Conversation c, Long meId, Message last, long unread) {

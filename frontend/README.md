@@ -63,10 +63,10 @@ connection settings default to the ones the script uses and can be overridden wi
 src/lib/          API client (single-flight token refresh, 429 handling), token store, DTO types, cursor-query hook
 src/components/ui Avatar, Button, Modal, Toast, Spinner, InfiniteList, empty/error states
 src/features/     auth (context, guards, login, register, verify-email, password reset), shell (layout, nav, trends panel),
-                  posts (card, actions, menu and dialogs, post page), compose (composer, image upload, dialog), home (timeline);
-                  profile (profile page and tabs, follow/mute/block, edit profile, follower lists, follow requests),
+                  posts (card, actions, menu and dialogs, post page), compose (composer, image upload, dialog), home (For you and Following tabs; the last tab is remembered in `xclone.homeTab`);
+                  profile (profile page and tabs, follow/mute/block, edit profile, follower lists, follow requests, the blank "XClone user" page of a deactivated account),
                   explore (search, trending, hashtag page, who to follow), bookmarks, notifications (page, unread badge, live push over one shared STOMP socket in lib/socket.ts),
-                  messages (inbox, chat, new message, edit and delete your own messages, live delivery and unread badge; sends go over REST, one at a time),
+                  messages (inbox, chat, new message, edit and delete your own messages, delete a whole conversation (for yourself only), live delivery and unread badge; sends go over REST, one at a time),
                   settings (username, email, password, appearance, protected account, blocked and muted lists, deactivate, delete),
                   admin (report review, remove post, suspend or remove account); more are added per step
 e2e/              Playwright specs and helpers

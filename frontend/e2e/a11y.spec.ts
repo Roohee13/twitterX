@@ -59,7 +59,10 @@ test.describe('signed in', () => {
 
     await signIn(page, me, '/')
     await ready(page)
-    await expectAccessible(page, 'home')
+    await expectAccessible(page, 'home (Following)')
+    await page.getByRole('tab', { name: 'For you' }).click()
+    await expect(page.getByRole('tabpanel').getByRole('article').first()).toBeVisible()
+    await expectAccessible(page, 'home (For you)')
     for (const [path, what] of [
       [`/post/${post.id}`, 'a post'],
       [`/u/${me.username}`, 'own profile'],
@@ -141,6 +144,25 @@ test.describe('signed in', () => {
     await expect(page.getByRole('dialog', { name: 'Delete this message?' })).toBeVisible()
     await expectAccessible(page, 'the delete message dialog')
     await page.keyboard.press('Escape')
+    await page.getByRole('button', { name: 'Conversation actions' }).click()
+    await expect(page.getByRole('menu')).toBeVisible()
+    await expectAccessible(page, 'the conversation menu')
+    await page.getByRole('menuitem', { name: 'Delete conversation' }).click()
+    await expect(page.getByRole('dialog', { name: 'Delete this conversation?' })).toBeVisible()
+    await expectAccessible(page, 'the delete conversation dialog')
+    await page.keyboard.press('Escape')
+
+    // A deactivated account: the blank profile and the read-only conversation with it.
+    const leaver = await createUser(request, { displayName: 'Leaving Lou' })
+    const leaverChat = await as(request, other).startConversation(leaver.username)
+    await as(request, leaver).sendMessage(leaverChat.id, 'my last message')
+    await request.post('/api/users/me/deactivate', { headers: { Authorization: `Bearer ${leaver.accessToken}` } })
+    await page.goto(`/u/${leaver.username}`)
+    await expect(page.getByText('This account is unavailable.')).toBeVisible()
+    await expectAccessible(page, 'the blank profile of a deactivated account')
+    await signIn(page, other, `/messages/${leaverChat.id}`)
+    await expect(page.getByText('my last message')).toBeVisible()
+    await expectAccessible(page, 'a read-only conversation with a deactivated account')
 
     await page.goto('/settings')
     await ready(page)

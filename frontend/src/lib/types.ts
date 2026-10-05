@@ -14,6 +14,8 @@ export interface UserSummary {
   displayName: string
   avatarUrl: string | null
   protectedAccount: boolean
+  /** A deactivated (or suspended or removed) account: the server sends the blank "XClone user", with no handle. Never link to it. */
+  unavailable?: boolean
 }
 
 /** The signed-in user (also returned on login and register). */
@@ -39,7 +41,8 @@ export interface ProfileResponse {
   bio: string | null
   avatarUrl: string | null
   bannerUrl: string | null
-  createdAt: string
+  /** Null for an unavailable account. */
+  createdAt: string | null
   followerCount: number
   followingCount: number
   followedByMe: boolean
@@ -47,6 +50,8 @@ export interface ProfileResponse {
   mutedByMe: boolean
   protectedAccount: boolean
   followRequestedByMe: boolean
+  /** A deactivated account: only the name "XClone user" is real, everything else is empty. */
+  unavailable?: boolean
 }
 
 export interface AuthResponse {

@@ -7,6 +7,7 @@ import { Button } from '../../components/ui/Button'
 import { useToast } from '../../components/ui/Toast'
 import { ApiError, api } from '../../lib/api'
 import type { SuggestionResponse, UserSummary } from '../../lib/types'
+import { invalidateFeeds } from '../../lib/feedCache'
 
 /** Follow button for a person in a list. The list does not say whether you already follow them, so it only offers "Follow"
  * and then shows what happened (Following, or Requested for a protected account). */
@@ -20,7 +21,7 @@ export function FollowChip({ user }: { user: UserSummary }) {
     try {
       await api.post(`/api/users/${encodeURIComponent(user.username)}/follow`)
       setState(user.protectedAccount ? 'requested' : 'following')
-      void queryClient.invalidateQueries({ queryKey: ['timeline'] })
+      invalidateFeeds(queryClient)
       void queryClient.invalidateQueries({ queryKey: ['profile', user.username.toLowerCase()] })
     } catch (e) {
       setState('idle')

@@ -14,7 +14,7 @@ const linkClass = 'text-brand underline decoration-1 underline-offset-2 hover:de
 /** Post text with #hashtags, @mentions and web addresses turned into links. Everything is rendered as text, never as HTML. */
 export function PostText({ content, mentions, className = '' }: { content: string; mentions: UserSummary[]; className?: string }) {
   if (!content) return null
-  const tokens = tokenize(content, mentions.map((m) => m.username))
+  const tokens = tokenize(content, mentions.filter((m) => !m.unavailable && m.username).map((m) => m.username))
   return (
     <p className={`whitespace-pre-wrap break-words [overflow-wrap:anywhere] ${className}`}>
       {tokens.map((token, i) => {

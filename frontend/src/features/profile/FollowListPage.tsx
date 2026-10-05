@@ -12,6 +12,15 @@ import { PageHeader } from '../shell/PageHeader'
 import { profileKey, useProfile } from './profileData'
 
 export function UserRow({ user }: { user: UserSummary }) {
+  if (user.unavailable) {
+    // A deactivated account: a plain row, no handle, no picture of theirs, nothing to open.
+    return (
+      <div className="flex items-center gap-3 border-b border-zinc-800 px-4 py-3">
+        <Avatar src={null} name="XClone user" />
+        <span className="font-bold text-zinc-400">XClone user</span>
+      </div>
+    )
+  }
   return (
     <Link to={`/u/${user.username}`} className="flex items-center gap-3 border-b border-zinc-800 px-4 py-3 hover:bg-hover">
       <Avatar src={user.avatarUrl} name={user.displayName} />

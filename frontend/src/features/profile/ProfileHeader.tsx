@@ -66,7 +66,7 @@ export function ProfileHeader({ profile, onEdit }: { profile: ProfileResponse; o
         {profile.bio && <PostText content={profile.bio} mentions={[]} className="mt-3 text-[15px]" />}
         <p className="mt-3 flex items-center gap-1 text-zinc-500">
           <CalendarDays size={16} aria-hidden="true" />
-          <span>Joined {joined(profile.createdAt)}</span>
+          {profile.createdAt && <span>Joined {joined(profile.createdAt)}</span>}
         </p>
         <p className="mt-3 flex gap-5 text-[15px]">
           <Link to={`${base}/following`} className="hover:underline"><strong>{profile.followingCount}</strong> <span className="text-zinc-500">Following</span></Link>

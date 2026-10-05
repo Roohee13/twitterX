@@ -113,3 +113,30 @@ export async function markConversationReadLocally(queryClient: QueryClient, id: 
   if (removed) addToTotal(queryClient, -removed)
   reviveEmpty(queryClient)
 }
+
+/**
+ * You deleted a conversation (for yourself): it leaves the inbox, its history and detail are forgotten, and what it held as unread leaves the
+ * total. Then the lists are read again, so the server has the last word (a message that arrived meanwhile brings it back).
+ */
+export async function removeConversationLocally(queryClient: QueryClient, id: number) {
+  await queryClient.cancelQueries({ queryKey: MESSAGES_KEY })
+  let unread = 0
+  const inbox = queryClient.getQueryData<Inbox>(INBOX_KEY)
+  if (inbox) {
+    queryClient.setQueryData<Inbox>(INBOX_KEY, {
+      ...inbox,
+      pages: inbox.pages.map((page) => ({
+        ...page,
+        items: page.items.filter((c) => {
+          if (c.id === id) unread = c.unreadCount
+          return c.id !== id
+        }),
+      })),
+    })
+  }
+  unread ||= queryClient.getQueryData<ConversationResponse>(conversationKey(id))?.unreadCount ?? 0
+  queryClient.removeQueries({ queryKey: threadKey(id) })
+  queryClient.removeQueries({ queryKey: conversationKey(id) })
+  if (unread) addToTotal(queryClient, -unread)
+  void queryClient.invalidateQueries({ queryKey: MESSAGES_KEY })
+}

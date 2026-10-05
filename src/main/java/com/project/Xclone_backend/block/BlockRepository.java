@@ -34,7 +34,9 @@ public interface BlockRepository extends JpaRepository<Block, Long> {
 
     @Query("""
             select b from Block b join fetch b.blocked
-            where b.blocker.id = :userId and b.id < :cursor order by b.id desc
+            where b.blocker.id = :userId and b.id < :cursor
+              and b.blocked.status = com.project.Xclone_backend.user.AccountStatus.ACTIVE
+            order by b.id desc
             """)
     List<Block> findBlocked(Long userId, long cursor, Limit limit);
 }

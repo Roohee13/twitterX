@@ -29,7 +29,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Query("""
             select u from User u
             where (u.username like :prefix escape '\\' or lower(u.displayName) like :prefix escape '\\')
-              and u.status <> com.project.Xclone_backend.user.AccountStatus.DELETED
+              and u.status = com.project.Xclone_backend.user.AccountStatus.ACTIVE
             order by u.username
             """)
     List<User> search(String prefix, Limit limit);

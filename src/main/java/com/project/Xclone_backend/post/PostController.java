@@ -174,6 +174,13 @@ public class PostController {
         return postService.timeline(me.id(), cursor, limit);
     }
 
+    /** The ranked feed: popular recent posts mixed with the people you follow. See PostService.forYou. */
+    @GetMapping("/timeline/for-you")
+    public CursorPage<PostResponse> forYou(@AuthenticationPrincipal AuthUser me,
+            @RequestParam(required = false) Long cursor, @RequestParam(required = false) Integer limit) {
+        return postService.forYou(me.id(), cursor, limit);
+    }
+
     private static Long idOf(AuthUser me) {
         return me == null ? null : me.id();
     }

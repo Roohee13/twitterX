@@ -16,6 +16,7 @@ afterAll(() => server.close())
 beforeEach(() => {
   configureApi({ baseUrl: BASE })
   tokens.clear()
+  localStorage.setItem('xclone.homeTab', 'following') // these tests are about the Following timeline; Home opens on "For you" by default
 })
 afterEach(() => {
   server.resetHandlers()

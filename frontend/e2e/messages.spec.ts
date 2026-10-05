@@ -218,6 +218,58 @@ test.describe('messages', () => {
     expect(JSON.stringify(stored)).not.toContain('oops, wrong chat')
   })
 
+  test('deleting a conversation: gone for me, untouched for the other person, and back with only the new messages when they write again', async ({ browser, page, request }) => {
+    test.setTimeout(120_000)
+    const ann = await createUser(request, { displayName: 'Ann Keeper' })
+    const ben = await createUser(request, { displayName: 'Ben Deleter' })
+    const { id } = await as(request, ann).startConversation(ben.username)
+    await as(request, ann).sendMessage(id, 'old message one')
+    await as(request, ben).sendMessage(id, 'old message two')
+    await as(request, ann).sendMessage(id, 'old message three')
+    const annPage = await signInAs(browser, ann, `/messages/${id}`)
+    await expect(annPage.getByText('old message three')).toBeVisible()
+    await signIn(page, ben, `/messages/${id}`)
+    await expect(page.getByText('old message three')).toBeVisible()
+
+    await page.getByRole('button', { name: 'Conversation actions' }).click()
+    await page.getByRole('menuitem', { name: 'Delete conversation' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Delete this conversation?' })
+    await expect(dialog).toContainText('Ann Keeper keeps their copy and is not told')
+    await page.screenshot(shot('conversation-delete-dialog'))
+    await dialog.getByRole('button', { name: 'Delete' }).click()
+
+    // Ben: back at the inbox, nothing in it, no unread, and the old address shows an empty chat.
+    await expect(page).toHaveURL(/\/messages$/)
+    await expect(page.getByText('Conversation deleted.')).toBeVisible()
+    await expect(page.getByText('No messages yet')).toBeVisible()
+    await expect(messagesLink(page, 'Messages')).toBeVisible()
+    await page.goto(`/messages/${id}`)
+    await expect(page.getByText('No messages yet. Say hello to Ann Keeper.')).toBeVisible()
+    await expect(page.getByText('old message one')).toHaveCount(0)
+    // Ann: nothing changed, and nothing told her.
+    await expect(annPage.getByText('old message one')).toBeVisible()
+    await expect(annPage.getByText('old message two')).toBeVisible()
+    await annPage.reload()
+    await expect(annPage.getByText('old message three')).toBeVisible()
+
+    // Ann writes again: the conversation comes back for Ben, live, with only the new message.
+    await page.goto('/messages')
+    await expect(page.getByText('No messages yet')).toBeVisible()
+    await annPage.getByRole('textbox', { name: 'Message' }).fill('hello again after you deleted')
+    await annPage.getByRole('textbox', { name: 'Message' }).press('Enter')
+    const row = page.getByRole('link', { name: 'Conversation with Ann Keeper, 1 unread' })
+    await expect(row).toContainText('hello again after you deleted')
+    await expect(messagesLink(page, 'Messages (1 unread)')).toBeVisible()
+    await row.click()
+    await expect(page.getByText('hello again after you deleted')).toBeVisible()
+    await expect(page.getByText('old message one')).toHaveCount(0)
+    await expect(page.getByText('old message three')).toHaveCount(0)
+    const history = JSON.stringify(await as(request, ben).get(`/api/conversations/${id}/messages`))
+    expect(history).toContain('hello again after you deleted')
+    expect(history).not.toContain('old message')
+    await page.screenshot(shot('conversation-back-with-new'))
+  })
+
   test('a deleted message cannot be edited, and the menu is there for the keyboard too', async ({ page, request }) => {
     const ann = await createUser(request)
     const ben = await createUser(request)
@@ -316,6 +368,22 @@ test.describe('on a phone', () => {
     await expect(page.getByRole('menuitem', { name: 'Edit' })).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
     await page.screenshot(shot('messages-phone-menu'))
+  })
+
+  test('on a phone the conversation can be deleted from the header menu', async ({ page, request }) => {
+    const me = await createUser(request)
+    const friend = await createUser(request)
+    const { id } = await as(request, me).startConversation(friend.username)
+    await as(request, friend).sendMessage(id, 'phone message')
+    await signIn(page, me, `/messages/${id}`)
+    await expect(page.getByText('phone message')).toBeVisible()
+
+    await page.getByRole('button', { name: 'Conversation actions' }).tap()
+    await page.getByRole('menuitem', { name: 'Delete conversation' }).tap()
+    await page.getByRole('dialog', { name: 'Delete this conversation?' }).getByRole('button', { name: 'Delete' }).tap()
+
+    await expect(page).toHaveURL(/\/messages$/)
+    await expect(page.getByText('No messages yet')).toBeVisible()
   })
 
   test('the inbox and the chat fit the screen, with the writing box above the bottom bar', async ({ page, request }) => {

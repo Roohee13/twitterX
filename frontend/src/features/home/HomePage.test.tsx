@@ -15,6 +15,7 @@ afterAll(() => server.close())
 beforeEach(() => {
   configureApi({ baseUrl: BASE })
   tokens.clear()
+  localStorage.setItem('xclone.homeTab', 'following') // these tests are about the Following timeline; Home opens on "For you" by default
 })
 afterEach(() => {
   server.resetHandlers()
@@ -152,5 +153,148 @@ describe('HomePage', () => {
     vi.useRealTimers()
 
     expect(await screen.findByText('a new post arrived')).toBeInTheDocument()
+  })
+})
+
+describe('the For you and Following tabs', () => {
+  const forYouPosts = [makePost({ content: 'ranked first' }), makePost({ content: 'ranked second' })]
+  const followingPosts = [makePost({ content: 'from someone I follow' })]
+  const calls = { forYou: 0, following: 0 }
+
+  function serveFeeds() {
+    calls.forYou = 0
+    calls.following = 0
+    server.use(
+      http.get(`${BASE}/api/timeline/for-you`, () => {
+        calls.forYou += 1
+        return HttpResponse.json({ items: forYouPosts, nextCursor: null })
+      }),
+      http.get(`${BASE}/api/timeline`, () => {
+        calls.following += 1
+        return HttpResponse.json({ items: followingPosts, nextCursor: null })
+      }),
+    )
+  }
+  const tab = (name: string) => screen.getByRole('tab', { name })
+
+  it('opens on "For you" for someone who never chose, and loads only that feed', async () => {
+    localStorage.removeItem('xclone.homeTab')
+    serveFeeds()
+
+    renderHome()
+
+    expect(await screen.findByText('ranked first')).toBeInTheDocument()
+    expect(tab('For you')).toHaveAttribute('aria-selected', 'true')
+    expect(tab('Following')).toHaveAttribute('aria-selected', 'false')
+    expect(screen.queryByText('from someone I follow')).not.toBeInTheDocument()
+    expect(calls).toEqual({ forYou: 1, following: 0 })
+  })
+
+  it('switching to Following shows that feed (fetched on demand), and switching back does not lose the first', async () => {
+    localStorage.removeItem('xclone.homeTab')
+    serveFeeds()
+    renderHome()
+    await screen.findByText('ranked first')
+
+    await userEvent.click(tab('Following'))
+
+    expect(await screen.findByText('from someone I follow')).toBeInTheDocument()
+    expect(screen.queryByText('ranked first')).not.toBeInTheDocument()
+    expect(tab('Following')).toHaveAttribute('aria-selected', 'true')
+    await userEvent.click(tab('For you'))
+    expect(await screen.findByText('ranked first')).toBeInTheDocument()
+    expect(calls.following).toBe(1)
+  })
+
+  it('remembers the last tab for next time', async () => {
+    localStorage.removeItem('xclone.homeTab')
+    serveFeeds()
+    const first = renderHome()
+    await screen.findByText('ranked first')
+    await userEvent.click(tab('Following'))
+    await screen.findByText('from someone I follow')
+    expect(localStorage.getItem('xclone.homeTab')).toBe('following')
+    first.unmount()
+
+    renderHome()
+
+    expect(await screen.findByText('from someone I follow')).toBeInTheDocument()
+    expect(tab('Following')).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('works with the arrow keys, moving focus with the selection', async () => {
+    localStorage.removeItem('xclone.homeTab')
+    serveFeeds()
+    renderHome()
+    await screen.findByText('ranked first')
+    tab('For you').focus()
+
+    await userEvent.keyboard('{ArrowRight}')
+
+    expect(tab('Following')).toHaveAttribute('aria-selected', 'true')
+    expect(tab('Following')).toHaveFocus()
+    await userEvent.keyboard('{ArrowLeft}')
+    expect(tab('For you')).toHaveFocus()
+  })
+
+  it('the refresh button reloads only the feed on screen', async () => {
+    localStorage.removeItem('xclone.homeTab')
+    serveFeeds()
+    renderHome()
+    await screen.findByText('ranked first')
+    await userEvent.click(tab('Following'))
+    await screen.findByText('from someone I follow')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Refresh timeline' }))
+
+    await waitFor(() => expect(calls.following).toBe(2))
+    expect(calls.forYou).toBe(1)
+  })
+
+  it('a feed that is empty says so in its own words', async () => {
+    localStorage.removeItem('xclone.homeTab')
+    server.use(http.get(`${BASE}/api/timeline/for-you`, () => HttpResponse.json({ items: [], nextCursor: null })))
+    renderHome()
+    expect(await screen.findByText('Nothing to show yet')).toBeInTheDocument()
+    expect(screen.queryByText('Welcome to XClone')).not.toBeInTheDocument()
+  })
+
+  it('a like made in one feed shows in the other (they share the cached post)', async () => {
+    localStorage.removeItem('xclone.homeTab')
+    let liked = false // the fake server remembers the like, as the real one does
+    const shared = () => makePost({ id: 4242, content: 'in both feeds', likeCount: liked ? 4 : 3, likedByMe: liked })
+    server.use(
+      http.get(`${BASE}/api/timeline/for-you`, () => HttpResponse.json({ items: [shared()], nextCursor: null })),
+      http.get(`${BASE}/api/timeline`, () => HttpResponse.json({ items: [shared()], nextCursor: null })),
+      http.post(`${BASE}/api/posts/4242/like`, () => {
+        liked = true
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+    renderHome()
+    await screen.findByText('in both feeds')
+    await userEvent.click(screen.getByRole('button', { name: 'Like' }))
+    await screen.findByRole('button', { name: 'Unlike' })
+
+    await userEvent.click(tab('Following'))
+
+    expect(await screen.findByText('in both feeds')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Unlike' })).toBeInTheDocument()
+  })
+
+  it('still works when storage is blocked', async () => {
+    serveFeeds()
+    // Only the tab choice is blocked (the test's own sign-in needs the rest of storage).
+    const realGet = Storage.prototype.getItem
+    const realSet = Storage.prototype.setItem
+    const blocked = () => new DOMException('blocked', 'SecurityError')
+    const getItem = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (this: Storage, key: string) { if (key === 'xclone.homeTab') throw blocked(); return realGet.call(this, key) })
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key: string, value: string) { if (key === 'xclone.homeTab') throw blocked(); realSet.call(this, key, value) })
+    renderHome()
+    expect(await screen.findByText('ranked first')).toBeInTheDocument()
+    await userEvent.click(tab('Following'))
+    expect(await screen.findByText('from someone I follow')).toBeInTheDocument()
+    getItem.mockRestore()
+    setItem.mockRestore()
   })
 })

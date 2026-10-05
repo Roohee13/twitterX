@@ -68,9 +68,10 @@ public class UserService {
     private final EmailTokenRepository emailTokenRepository;
     private final ActiveUserCache activeUserCache;
 
+    /** Only active accounts can be looked up by handle: a deactivated, suspended or removed one answers 404 to every action (follow, block, report, message ...). */
     public User requireByUsername(String username) {
         return userRepository.findByUsername(username.toLowerCase(Locale.ROOT))
-                .filter(u -> u.getStatus() != AccountStatus.DELETED && u.getStatus() != AccountStatus.SUSPENDED)
+                .filter(u -> u.getStatus() == AccountStatus.ACTIVE)
                 .orElseThrow(() -> ApiException.notFound("User not found"));
     }
 
@@ -259,7 +260,13 @@ public class UserService {
 
     @Transactional(readOnly = true)
     public ProfileResponse profile(String username, Long viewerId) {
-        User user = requireByUsername(username);
+        User found = userRepository.findByUsername(username.toLowerCase(Locale.ROOT))
+                .filter(u -> u.getStatus() == AccountStatus.ACTIVE || u.getStatus() == AccountStatus.DEACTIVATED)
+                .orElseThrow(() -> ApiException.notFound("User not found"));
+        if (found.getStatus() == AccountStatus.DEACTIVATED) {
+            return userMapper.toUnavailableProfile(found.getId()); // a blank "XClone user": nothing of the account is shown
+        }
+        User user = found;
         boolean followedByMe = viewerId != null
                 && followRepository.existsByFollowerIdAndFolloweeId(viewerId, user.getId());
         boolean blockedByMe = viewerId != null
@@ -356,8 +363,8 @@ public class UserService {
 
     /** The posts and follower lists of a protected account are visible to its owner and approved followers only. */
     public boolean canViewPosts(Long viewerId, User owner) {
-        if (owner.getStatus() == AccountStatus.SUSPENDED) {
-            return false;
+        if (owner.getStatus() != AccountStatus.ACTIVE) {
+            return false; // deactivated, suspended or removed: their posts are not shown to anyone
         }
         if (!owner.isProtectedAccount()) {
             return true;
@@ -367,7 +374,7 @@ public class UserService {
     }
 
     public void requireCanViewPosts(Long viewerId, User owner) {
-        if (owner.getStatus() == AccountStatus.SUSPENDED) {
+        if (owner.getStatus() != AccountStatus.ACTIVE) {
             throw ApiException.notFound("User not found");
         }
         if (!canViewPosts(viewerId, owner)) {

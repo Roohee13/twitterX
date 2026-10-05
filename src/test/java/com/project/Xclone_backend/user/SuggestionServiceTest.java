@@ -32,7 +32,7 @@ class SuggestionServiceTest {
 
     private SuggestionService service(Duration ttl) {
         when(mapper.toSummary(any(Long.class), any(), any(), any(), anyBoolean())).thenAnswer(i ->
-                new UserSummary(i.getArgument(0), i.getArgument(1), i.getArgument(2), null, false));
+                new UserSummary(i.getArgument(0), i.getArgument(1), i.getArgument(2), null, false, false));
         return new SuggestionService(users, follows, mapper, ttl, clock::get);
     }
 

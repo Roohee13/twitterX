@@ -3,6 +3,8 @@ package com.project.Xclone_backend.conversation;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -44,5 +46,12 @@ public class ConversationController {
     @GetMapping("/{id}")
     public ConversationResponse get(@PathVariable Long id, @AuthenticationPrincipal AuthUser me) {
         return conversationService.get(me.id(), id);
+    }
+
+    /** Deletes the conversation for you only: it leaves your inbox and your history is erased from your side; the other person keeps theirs. */
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable Long id, @AuthenticationPrincipal AuthUser me) {
+        conversationService.deleteForMe(me.id(), id);
     }
 }

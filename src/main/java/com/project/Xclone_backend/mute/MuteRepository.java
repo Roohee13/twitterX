@@ -26,7 +26,9 @@ public interface MuteRepository extends JpaRepository<Mute, Long> {
 
     @Query("""
             select m from Mute m join fetch m.muted
-            where m.muter.id = :userId and m.id < :cursor order by m.id desc
+            where m.muter.id = :userId and m.id < :cursor
+              and m.muted.status = com.project.Xclone_backend.user.AccountStatus.ACTIVE
+            order by m.id desc
             """)
     List<Mute> findMuted(Long userId, long cursor, Limit limit);
 

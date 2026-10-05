@@ -58,4 +58,18 @@ public class Conversation {
     @ColumnDefault("now()") // lets ddl-auto=update add the column to a table that already has rows
     @Column(nullable = false)
     private Instant updatedAt;
+
+    /** Messages with an id up to this are hidden from user one: they deleted the conversation (for themselves) up to there. 0 = nothing deleted. */
+    @ColumnDefault("0")
+    @Column(nullable = false)
+    private long userOneClearedBefore;
+
+    @ColumnDefault("0")
+    @Column(nullable = false)
+    private long userTwoClearedBefore;
+
+    /** Messages with an id up to this are hidden from this participant. */
+    public long clearedBeforeFor(Long userId) {
+        return userOne.getId().equals(userId) ? userOneClearedBefore : userTwoClearedBefore;
+    }
 }

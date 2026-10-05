@@ -74,6 +74,11 @@ A deleted message no longer counts as unread (per conversation, in the total, an
 The other person's open chat is told over `/user/queue/message-updates` (a `MessageResponse`, the same shape as a message), so it replaces the message instead of adding one;
 `/user/queue/messages` stays for new messages only. Message responses carry `editedAt` (null if never edited) and `deleted`; `lastMessage` in the inbox carries `deleted` too.
 
+**Deleting a conversation.** `DELETE /conversations/{id}` (`204`, safe to repeat) deletes it **for you only**. Everything in it up to now leaves your inbox and your history and is marked read; the other person
+keeps their copy and is not told. If either of you writes again, the conversation comes back in your inbox with **only the new messages** (the deleted history stays deleted), and starting a chat with
+the same person reuses it. Technically each side remembers the newest message it deleted (`user_one_cleared_before`, `user_two_cleared_before`): messages up to there are hidden from that person in the inbox,
+the history, the previews and the unread counts. It works whatever the other account's state (deactivated, blocked): it only changes your own view. Your own old messages in a deleted conversation can no longer be edited or deleted (`404`).
+
 **Running several instances.** Pushes (notifications and messages) are published to the Redis channel `ws:user-push` and every instance
 delivers them to the sessions it holds, so a user receives them on whichever instance they are connected to. This is on by default
 (`WS_REDIS_RELAY=false` turns it off for a single instance). Redis does not have to be up at boot: the app starts, delivers pushes to
@@ -209,7 +214,8 @@ All endpoints are under `/api`. Send `Authorization: Bearer <accessToken>` for a
 | GET | `/notifications/unread-count` | ✓ | |
 | POST | `/notifications/read`, `/notifications/{id}/read` | ✓ | mark all / one as read |
 | DELETE | `/notifications/{id}` | ✓ | |
-| GET | `/timeline` | ✓ | your posts + people you follow, newest first |
+| GET | `/timeline` | ✓ | your posts + people you follow, newest first (the **Following** tab) |
+| GET | `/timeline/for-you` | ✓ | the ranked **For you** feed: popular recent posts mixed with the people you follow. Paged with `?cursor=&limit=` like the others, but the cursor is opaque (see below) and the feed ends after 200 posts |
 | POST | `/media/upload-url` | ✓ | see above |
 
 **Protected accounts.** With `protectedAccount: true`, following needs the owner's approval, and the account's posts, replies, likes tab, follower and
@@ -218,7 +224,28 @@ shows `protectedAccount` and `followRequestedByMe`). Existing followers stay. Th
 quote embeds for everyone else, and cannot be reposted or quoted by anyone. Replies and mentions from a protected account do not notify people who cannot see them.
 The owner is notified of requests (`FOLLOW_REQUEST`). Turning protection off approves all pending requests.
 
+**How "For you" is ranked.** One SQL query (`PostRepository.findForYouIds`, constants at the top of `PostService`):
+
+- *Candidates:* the latest 2000 top-level posts from the last 7 days that you may see: the author is active, protected authors only if they are you or you follow them, no blocks either way, no muted authors, not deleted. Replies and repost rows are never candidates; your own posts are.
+- *Score:* `(likes + 2·reposts + 3·replies + 1) / (age in hours + 2)^1.5`, times a boost: **2.0** for you and the people you follow, **1.3** for people followed by someone you follow, otherwise 1.0. So engagement wins, newer wins, and your circle is favoured without hiding strangers' popular posts.
+- *Variety:* at most 3 posts per author.
+- *Paging:* ranking depends on the clock, so the cursor packs the minute the feed was scored at and how many posts were served (`minute * 1000 + offset`); every page of one feed is scored at that same minute. A cursor older than an hour, or invalid, simply starts a new feed.
+- A post you write appears at the top of the feed you are looking at at once, but the next time the feed is reloaded it sits where its score puts it (a new post has no likes yet); it is always on your profile and in Following.
+
 **Pagination.** Paged endpoints accept `?cursor=&limit=` (default 20, max 50) and return `{ items, nextCursor }`. Pass `nextCursor` back to get the next page; `null` means there are no more pages.
+
+## Deactivated accounts
+
+`POST /users/me/deactivate` signs the person out everywhere and hides them. Nothing is deleted; **signing in again** (`POST /auth/login` with the right password) brings everything back exactly as it was.
+While an account is deactivated it is a blank **"XClone user"** to everyone else:
+
+- **Profile:** `GET /users/{username}` answers `200` with `unavailable: true`, `displayName: "XClone user"`, an empty `username`, and no bio, picture, banner, join date or counts. The app shows a plain page that says the account is unavailable.
+- **Posts:** their posts, replies, reposts and likes are not shown anywhere (feeds, For you, search, hashtags, someone else's reply thread, profile tabs, likes and bookmarks lists, quotes of them), and `GET /posts/{id}` answers `404`. Counters such as a post's reply count are not recomputed.
+- **Lists:** wherever they would be listed (followers, following, who liked a post, @mentions inside other people's posts, message senders) they appear as a `UserSummary` with `unavailable: true`, an empty `username`, no picture and the name "XClone user". Clients must not link to them. Follower and following counts do not change.
+- **Direct messages:** a conversation with them stays in the inbox as "XClone user" and its history (and unread count) stays readable, but nothing can be sent, edited or deleted in it (`403`).
+- **Actions by handle** (follow, block, mute, report, start a conversation) answer `404`. They no longer appear in user search or the blocked and muted lists (a block or mute is kept and returns with them). Notifications from them and their follow requests stay hidden.
+- **Admins** still see who a report is about, whatever the status (`reportedUserStatus: "DEACTIVATED"`).
+- Suspended accounts behave the same way in lists and posts, but their profile address still answers `404`.
 
 ## Moderating reports
 

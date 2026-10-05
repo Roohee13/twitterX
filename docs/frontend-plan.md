@@ -47,7 +47,7 @@ Each ends with a working, tested slice you can click through.
 |---|---|---|
 | **0** | Scaffold | Vite + React + TS + Tailwind, lint/format, Vitest, dev proxy, typed API client with the refresh logic above, `frontend` job in CI, README on running both apps |
 | **1** | Auth + app shell | Register, login, logout, forgot/reset password, verify-email page, protected routes, layout (left nav, main column, right column), dark theme |
-| **2** | Core feed (first usable version) | Home timeline with infinite scroll, composer (text, up to 4 images through R2 presigned upload), post card (like, repost, quote, reply, bookmark, edit, delete), post detail with thread and replies, hashtag and @mention links |
+| **2** | Core feed (first usable version) | Home with a ranked "For you" feed and a "Following" timeline (infinite scroll), composer (text, up to 4 images through R2 presigned upload), post card (like, repost, quote, reply, bookmark, edit, delete), post detail with thread and replies, hashtag and @mention links |
 | **3** | Profiles and people | Profile page (posts / replies / likes tabs), edit profile with avatar and banner, follow / unfollow, followers and following lists, block and mute, protected-account behavior (lock icon, "requested", 403 screens) |
 | **4** | Discovery | Search (people and posts), hashtag page, trending, who-to-follow, bookmarks |
 | **5** | Notifications and real-time | Notifications page with unread badge, live updates over one shared STOMP connection (`lib/socket.ts`, reused by Messages), moderation notices; follow-request approve/deny lives on its own page, linked from the notification |

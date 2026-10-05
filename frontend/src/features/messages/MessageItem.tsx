@@ -66,7 +66,8 @@ function MessageEditor({ message, onDone }: { message: MessageResponse; onDone: 
 }
 
 /** One message in the chat. Your own messages have a menu to edit or delete them; a deleted one shows a placeholder. */
-export function MessageItem({ message, mine }: { message: MessageResponse; mine: boolean }) {
+/** `readOnly`: the other person's account is unavailable, so nothing in this conversation can be changed any more. */
+export function MessageItem({ message, mine, readOnly = false }: { message: MessageResponse; mine: boolean; readOnly?: boolean }) {
   const queryClient = useQueryClient()
   const toast = useToast()
   const [editing, setEditing] = useState(false)
@@ -85,7 +86,7 @@ export function MessageItem({ message, mine }: { message: MessageResponse; mine:
 
   if (editing) return <MessageEditor message={message} onDone={() => setEditing(false)} />
 
-  const canChange = mine && !message.deleted
+  const canChange = mine && !message.deleted && !readOnly
   return (
     <>
       <MessageBubble

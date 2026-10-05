@@ -5,7 +5,7 @@ import { Route, Routes, useLocation } from 'react-router'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { configureApi } from '../../lib/api'
 import { tokens } from '../../lib/tokens'
-import type { ConversationResponse, MessageResponse } from '../../lib/types'
+import type { ConversationResponse, MessageResponse, UserSummary } from '../../lib/types'
 import { fakeSocket } from '../../test/fakeSocket'
 import { makeProfile, makeUser } from '../../test/fixtures'
 import { BASE, me, renderSignedIn, server } from '../../test/render'
@@ -55,6 +55,7 @@ function serve(initial: { conversations: ConversationResponse[]; messages?: Reco
     /** Milliseconds a message with this text takes to be saved, to make slow requests overtake each other. */
     sendDelay: {} as Record<string, number>,
     edits: [] as Array<{ id: number; content: string }>,
+    deletedConversations: [] as number[],
     deletes: [] as number[],
     failNextChange: null as string | null,
   }
@@ -121,6 +122,16 @@ function serve(initial: { conversations: ConversationResponse[]; messages?: Reco
       if (!found) return HttpResponse.json({ status: 404, detail: 'Message not found' }, { status: 404 })
       state.deletes.push(found.id)
       Object.assign(found, { content: '', deleted: true })
+      return new HttpResponse(null, { status: 204 })
+    }),
+    http.delete(`${BASE}/api/conversations/:id`, ({ params }) => {
+      if (state.failNextChange) {
+        const detail = state.failNextChange
+        state.failNextChange = null
+        return HttpResponse.json({ status: 500, detail }, { status: 500 })
+      }
+      state.deletedConversations.push(Number(params.id))
+      state.conversations = state.conversations.filter((c) => c.id !== Number(params.id))
       return new HttpResponse(null, { status: 204 })
     }),
     http.post(`${BASE}/api/conversations/:id/read`, ({ params }) => {
@@ -660,5 +671,76 @@ describe('editing and deleting messages', () => {
 
     await waitFor(() => expect(screen.getByRole('link', { name: 'Conversation with Dana Dev, 1 unread' })).toHaveTextContent('This message was deleted'))
     await waitFor(() => expect(screen.getByTestId('badge')).toHaveTextContent('1'))
+  })
+})
+
+describe('deleting a conversation', () => {
+  const withLast = (id: number, who = dana, unread = 0) => conversation(id, who, { unreadCount: unread, lastMessage: { id: id * 10, senderId: who.id, content: `last of ${id}`, createdAt: minutesAgo(1), deleted: false } })
+  const menu = async () => {
+    await userEvent.click(await screen.findByRole('button', { name: 'Conversation actions' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Delete conversation' }))
+    return screen.findByRole('dialog', { name: 'Delete this conversation?' })
+  }
+
+  it('asks first, explains that the other person keeps theirs, and cancelling changes nothing', async () => {
+    const state = serve({ conversations: [withLast(1)], messages: { 1: [message(1, 'them', 'keep me')] } })
+    open('/messages/1', state)
+    await screen.findByText('keep me')
+
+    const dialog = await menu()
+
+    expect(dialog).toHaveTextContent('Dana Dev keeps their copy and is not told')
+    expect(dialog).toHaveTextContent('comes back with only the new messages')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(state.deletedConversations).toEqual([])
+    expect(screen.getByText('keep me')).toBeInTheDocument()
+  })
+
+  it('deletes it, goes back to the inbox, says so, and the conversation is gone from the list', async () => {
+    const state = serve({ conversations: [withLast(1), withLast(2, eli)], messages: { 1: [message(1, 'them', 'bye')] } })
+    open('/messages/1', state)
+    await screen.findByText('bye')
+
+    await userEvent.click(within(await menu()).getByRole('button', { name: 'Delete' }))
+
+    await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent(/^\/messages$/))
+    expect(await screen.findByText('Conversation deleted.')).toBeInTheDocument()
+    expect(state.deletedConversations).toEqual([1])
+    expect(await screen.findByRole('link', { name: 'Conversation with Eli Eng' })).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByRole('link', { name: 'Conversation with Dana Dev' })).not.toBeInTheDocument())
+  })
+
+  it('what the conversation held as unread leaves the badge', async () => {
+    const state = serve({ conversations: [withLast(1, dana, 3), withLast(2, eli, 1)], messages: { 1: [message(1, 'them', 'unread one')] } })
+    open('/messages/1', state)
+    await screen.findByText('unread one')
+
+    await userEvent.click(within(await menu()).getByRole('button', { name: 'Delete' }))
+
+    await waitFor(() => expect(screen.getByTestId('badge')).toHaveTextContent('1')) // only Eli's one is left
+  })
+
+  it('stays in the chat and shows the reason when it cannot be deleted', async () => {
+    const state = serve({ conversations: [withLast(1)], messages: { 1: [message(1, 'them', 'still here')] } })
+    open('/messages/1', state)
+    await screen.findByText('still here')
+    const dialog = await menu()
+    state.failNextChange = 'The server is busy'
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
+
+    expect(await screen.findByText('The server is busy')).toBeInTheDocument()
+    expect(screen.getByTestId('where')).toHaveTextContent('/messages/1')
+    expect(screen.getByText('still here')).toBeInTheDocument()
+  })
+
+  it('is still offered when the other account is unavailable (a read-only chat)', async () => {
+    const state = serve({ conversations: [conversation(1, { ...dana, username: '', displayName: 'XClone user', unavailable: true } as UserSummary, { lastMessage: { id: 10, senderId: dana.id, content: 'old', createdAt: minutesAgo(1), deleted: false } })], messages: { 1: [message(1, 'them', 'old')] } })
+    open('/messages/1', state)
+    await screen.findByText('old')
+
+    await userEvent.click(within(await menu()).getByRole('button', { name: 'Delete' }))
+
+    await waitFor(() => expect(state.deletedConversations).toEqual([1]))
   })
 })
