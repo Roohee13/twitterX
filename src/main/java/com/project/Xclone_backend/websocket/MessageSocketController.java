@@ -38,7 +38,7 @@ public class MessageSocketController {
     @SendToUser("/queue/sent")
     public MessageResponse send(@DestinationVariable Long conversationId, @Valid @Payload SendMessageRequest req,
             Principal principal) {
-        return messageService.send(((StompPrincipal) principal).user().id(), conversationId, req.content());
+        return messageService.send(((StompPrincipal) principal).user().id(), conversationId, req.content(), req.mediaKeys());
     }
 
     @MessageExceptionHandler

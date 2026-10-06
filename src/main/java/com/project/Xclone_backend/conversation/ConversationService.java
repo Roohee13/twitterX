@@ -129,6 +129,6 @@ public class ConversationService {
     private ConversationResponse toResponse(Conversation c, Long meId, Message last, long unread) {
         return new ConversationResponse(c.getId(), userMapper.toSummary(other(c, meId)), c.getCreatedAt(),
                 c.getUpdatedAt(), last == null ? null : new LastMessage(last.getId(), last.getSender().getId(),
-                        last.getContent(), last.getCreatedAt(), last.isDeleted()), unread);
+                        last.getContent(), last.getCreatedAt(), last.isDeleted(), !last.getMedia().isEmpty()), unread);
     }
 }

@@ -63,11 +63,16 @@ on connect (and reconnect) fetch `GET /notifications/unread-count` and the lates
 is the id of the newest message, so paging is exact even while new messages arrive. `GET /conversations/{id}` has the same two fields (`lastMessage` is
 null before the first message); `GET /conversations/unread-count` is the total for a badge.
 
+**Photos in messages.** A message can carry up to 4 photos, with or without text. Upload each one as for a post (*Cloudflare R2 setup*: `POST /media/upload-url`, then PUT the bytes), then send
+`{content?, mediaKeys?}` to `POST /conversations/{id}/messages` (or the WebSocket destination). At least one of text or a photo is required; each key must be your own upload that really reached the bucket (`400` otherwise).
+Messages carry `mediaUrls` (empty for none) and the inbox's `lastMessage.hasMedia` says the newest message has photos. Editing changes the text only (a photo message may lose its text);
+deleting a message removes its photo rows with the text, so the chat shows only the "deleted" placeholder. The image files themselves stay in the bucket.
+
 **Editing and deleting messages.** The sender can change or remove their own messages, with no time limit:
 
 | Method | Path | Notes |
 |---|---|---|
-| PATCH | `/conversations/{id}/messages/{messageId}` | `{content}` (1 to 2000 characters). Returns the message with `editedAt` set. Saving the same text changes nothing. `403` if it is not yours, `404` if it is not in that conversation, `409` if it was deleted |
+| PATCH | `/conversations/{id}/messages/{messageId}` | `{content}` (1 to 2000 characters; may be empty only on a message that has photos). Returns the message with `editedAt` set. Saving the same text changes nothing. `403` if it is not yours, `404` if it is not in that conversation, `409` if it was deleted |
 | DELETE | `/conversations/{id}/messages/{messageId}` | Deletes it **for both people**: the text is erased from the database and the row stays as a placeholder (`deleted: true`, `content: ""`) so the chat keeps its order and the inbox keeps working. `204`, safe to repeat |
 
 A deleted message no longer counts as unread (per conversation, in the total, and in the inbox). Both endpoints answer `403` when the pair is blocked or inactive, like sending does.

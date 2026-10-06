@@ -13,7 +13,7 @@ export function ConversationRow({ conversation }: { conversation: ConversationRe
     ? 'No messages yet'
     : lastMessage.deleted
       ? mine ? 'You deleted a message' : 'This message was deleted'
-      : `${mine ? 'You: ' : ''}${lastMessage.content}`
+      : `${mine ? 'You: ' : ''}${lastMessage.content || (lastMessage.hasMedia ? 'Sent a photo' : '')}`
   return (
     <Link
       to={`/messages/${conversation.id}`}

@@ -42,7 +42,7 @@ export async function addMessage(queryClient: QueryClient, message: MessageRespo
     const updated: ConversationResponse = {
       ...known,
       updatedAt: message.createdAt,
-      lastMessage: { id: message.id, senderId: message.sender.id, content: message.content, createdAt: message.createdAt, deleted: message.deleted },
+      lastMessage: { id: message.id, senderId: message.sender.id, content: message.content, createdAt: message.createdAt, deleted: message.deleted, hasMedia: (message.mediaUrls?.length ?? 0) > 0 },
       unreadCount: unread ? known.unreadCount + 1 : known.unreadCount,
     }
     const [first, ...rest] = inbox.pages.map((page) => ({ ...page, items: page.items.filter((c) => c.id !== message.conversationId) }))
@@ -79,7 +79,7 @@ export async function replaceMessage(queryClient: QueryClient, message: MessageR
       pages: inbox.pages.map((page) => ({
         ...page,
         items: page.items.map((c) =>
-          c.lastMessage?.id === message.id ? { ...c, lastMessage: { ...c.lastMessage, content: message.content, deleted: message.deleted } } : c,
+          c.lastMessage?.id === message.id ? { ...c, lastMessage: { ...c.lastMessage, content: message.content, deleted: message.deleted, hasMedia: (message.mediaUrls?.length ?? 0) > 0 } } : c,
         ),
       })),
     })

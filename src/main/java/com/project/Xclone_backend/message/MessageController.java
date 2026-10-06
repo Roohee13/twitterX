@@ -34,7 +34,7 @@ public class MessageController {
     @ResponseStatus(HttpStatus.CREATED)
     public MessageResponse send(@PathVariable Long conversationId, @AuthenticationPrincipal AuthUser me,
             @Valid @RequestBody SendMessageRequest req) {
-        return messageService.send(me.id(), conversationId, req.content());
+        return messageService.send(me.id(), conversationId, req.content(), req.mediaKeys());
     }
 
     @GetMapping("/{conversationId}/messages")

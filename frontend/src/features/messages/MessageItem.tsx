@@ -19,9 +19,10 @@ function MessageEditor({ message, onDone }: { message: MessageResponse; onDone: 
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const trimmed = text.trim()
+  const hasPhotos = (message.mediaUrls?.length ?? 0) > 0 // a photo message may lose its text
 
   async function save() {
-    if (!trimmed) return setError('A message cannot be empty')
+    if (!trimmed && !hasPhotos) return setError('A message cannot be empty')
     if (trimmed === message.content) return onDone() // nothing changed
     setBusy(true)
     try {
@@ -59,7 +60,7 @@ function MessageEditor({ message, onDone }: { message: MessageResponse; onDone: 
       {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
       <div className="flex justify-end gap-2">
         <Button size="sm" variant="secondary" onClick={onDone}>Cancel</Button>
-        <Button size="sm" loading={busy} disabled={!trimmed} onClick={() => void save()}>Save</Button>
+        <Button size="sm" loading={busy} disabled={!trimmed && !hasPhotos} onClick={() => void save()}>Save</Button>
       </div>
     </div>
   )
@@ -80,7 +81,7 @@ export function MessageItem({ message, mine, readOnly = false }: { message: Mess
       toast(e instanceof ApiError ? e.message : 'Could not delete the message.', 'error')
       return false
     }
-    await replaceMessage(queryClient, { ...message, content: '', deleted: true })
+    await replaceMessage(queryClient, { ...message, content: '', deleted: true, mediaUrls: [] })
     return true
   }
 
@@ -91,6 +92,7 @@ export function MessageItem({ message, mine, readOnly = false }: { message: Mess
     <>
       <MessageBubble
         content={message.content}
+        mediaUrls={message.mediaUrls}
         createdAt={message.createdAt}
         mine={mine}
         edited={message.editedAt !== null}

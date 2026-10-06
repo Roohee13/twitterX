@@ -8,6 +8,7 @@ async function signInAs(browser: Browser, user: Parameters<typeof signIn>[1], pa
   await signIn(page, user, path)
   return page
 }
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
 const box = (page: Page) => page.getByRole('textbox', { name: 'Message' })
 
 test.describe('messages', () => {
@@ -349,6 +350,73 @@ test.describe('messages', () => {
     await page.getByRole('dialog', { name: 'New message' }).getByRole('button', { name: new RegExp(friend.username) }).click()
     await expect(page).toHaveURL(/\/messages\/\d+$/)
     await expect(page.getByRole('heading', { name: 'Findable Friend', level: 1 })).toBeVisible()
+  })
+})
+
+test.describe('photos in messages', () => {
+  test('with image storage mocked: choose photos, see previews, send them with a caption, and they show in the chat', async ({ page, request }) => {
+    const ann = await createUser(request, { displayName: 'Ann Photographer' })
+    const ben = await createUser(request, { displayName: 'Ben Viewer' })
+    const conversation = await as(request, ann).startConversation(ben.username)
+    let uploads = 0
+    await page.route('**/api/media/upload-url', (route) => {
+      uploads += 1
+      return route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({ key: `users/${ann.id}/pic${uploads}.png`, uploadUrl: `https://r2.test/pic${uploads}`, headers: { 'content-type': ['image/png'] }, publicUrl: `https://media.test/pic${uploads}.png`, expiresAt: '2031-01-01T00:00:00Z' }),
+      })
+    })
+    await page.route('https://r2.test/**', (route) => route.fulfill({ status: 200 }))
+    await page.route('https://media.test/**', (route) => route.fulfill({ status: 200, contentType: 'image/png', body: PNG }))
+    // The real server cannot check a bucket that does not exist here, so it is the browser's view of "the server accepted the photos".
+    let sent: { content: string; mediaKeys: string[] } | undefined
+    let saved: unknown
+    await page.route(`**/api/conversations/${conversation.id}/messages*`, async (route) => {
+      if (route.request().method() === 'GET') {
+        // Once the chat reads the thread again it must still contain the message this fake server "saved".
+        return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: saved ? [saved] : [], nextCursor: null }) })
+      }
+      sent = route.request().postDataJSON()
+      saved = {
+          id: 990001, conversationId: conversation.id, sender: { id: ann.id, username: ann.username, displayName: ann.displayName, avatarUrl: null, protectedAccount: false, unavailable: false },
+          content: sent!.content, createdAt: new Date().toISOString(), editedAt: null, deleted: false, mediaUrls: sent!.mediaKeys.map((_, i) => `https://media.test/pic${i + 1}.png`),
+      }
+      return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify(saved) })
+    })
+    await signIn(page, ann, `/messages/${conversation.id}`)
+    await expect(page.getByText('No messages yet. Say hello to Ben Viewer.')).toBeVisible()
+
+    await page.getByLabel('Choose photos').setInputFiles([
+      { name: 'one.png', mimeType: 'image/png', buffer: PNG },
+      { name: 'two.png', mimeType: 'image/png', buffer: PNG },
+    ])
+    await expect(page.getByAltText('Selected photo preview')).toHaveCount(2)
+    await expect(page.getByRole('progressbar')).toHaveCount(0) // both uploaded
+    await box(page).fill('two for you')
+    await page.screenshot(shot('messages-photo-composer'))
+    await page.getByRole('button', { name: 'Send message' }).click()
+
+    await expect(page.getByRole('img', { name: /Photo \d of 2 in the message/ })).toHaveCount(2)
+    await expect(page.getByText('two for you')).toBeVisible()
+    expect(sent).toMatchObject({ content: 'two for you', mediaKeys: [`users/${ann.id}/pic1.png`, `users/${ann.id}/pic2.png`] })
+    await expect(page.getByRole('list', { name: 'Photos to send' })).toHaveCount(0)
+    await page.screenshot(shot('messages-photo-sent'))
+  })
+
+  test('when image storage is not set up the person is told and can still write text', async ({ page, request }) => {
+    const ann = await createUser(request)
+    const ben = await createUser(request)
+    const conversation = await as(request, ann).startConversation(ben.username)
+    await signIn(page, ann, `/messages/${conversation.id}`)
+
+    await page.getByLabel('Choose photos').setInputFiles({ name: 'one.png', mimeType: 'image/png', buffer: PNG })
+
+    await expect(page.getByText('Image uploads are not set up on this server yet.')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Send message' })).toBeDisabled()
+    await page.getByRole('button', { name: 'Remove photo' }).click()
+    await box(page).fill('words work')
+    await page.getByRole('button', { name: 'Send message' }).click()
+    await expect(page.getByText('words work')).toBeVisible()
   })
 })
 

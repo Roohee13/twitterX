@@ -16,13 +16,12 @@ import { useCurrentUser } from '../auth/AuthContext'
 import { PageHeader } from '../shell/PageHeader'
 import { MessageBubble } from './MessageBubble'
 import { MessageItem } from './MessageItem'
-import { MessageComposer } from './MessageComposer'
+import { MessageComposer, type Outgoing } from './MessageComposer'
 import { addMessage, conversationKey, removeConversationLocally, threadKey } from './messageCache'
 import { markRead } from './messageHooks'
 
-interface Pending {
+interface Pending extends Outgoing {
   key: number
-  content: string
   error?: string
 }
 
@@ -65,15 +64,19 @@ export function ChatPage() {
     end.current?.scrollIntoView({ block: 'end' })
   }, [newestId, pending.length])
 
-  function send(content: string) {
-    const key = ++counter.current
-    setPending((p) => [...p, { key, content }])
+  /** The local previews of a message the server now has (or the person gave up on) are no longer needed. */
+  const forget = (item: Pending) => item.previews.forEach((url) => URL.revokeObjectURL(url))
+
+  function send(message: Outgoing, key = ++counter.current) {
+    const { content, mediaKeys } = message
+    setPending((p) => [...p.filter((x) => x.key !== key), { key, ...message }])
     // One at a time, so messages reach the server in the order they were written.
     queue.current = queue.current.then(async () => {
       try {
-        const saved = await api.post<MessageResponse>(`/api/conversations/${id}/messages`, { content })
+        const saved = await api.post<MessageResponse>(`/api/conversations/${id}/messages`, { content, ...(mediaKeys.length > 0 ? { mediaKeys } : {}) })
         await addMessage(queryClient, saved, { mine: true, open: true })
         setPending((p) => p.filter((x) => x.key !== key))
+        forget({ key, ...message })
       } catch (e) {
         const error = e instanceof ApiError ? e.message : 'Could not send.'
         setPending((p) => p.map((x) => (x.key === key ? { ...x, error } : x)))
@@ -96,8 +99,12 @@ export function ChatPage() {
   }
 
   function retry(item: Pending) {
+    send({ content: item.content, mediaKeys: item.mediaKeys, previews: item.previews }, item.key)
+  }
+
+  function discard(item: Pending) {
     setPending((p) => p.filter((x) => x.key !== item.key))
-    send(item.content)
+    forget(item)
   }
 
   if (conversation.isPending) return <Spinner />
@@ -151,12 +158,12 @@ export function ChatPage() {
         ))}
         {pending.map((item) => (
           <div key={item.key}>
-            <MessageBubble content={item.content} mine state={item.error ? 'failed' : 'sending'} />
+            <MessageBubble content={item.content} mediaUrls={item.previews} mine state={item.error ? 'failed' : 'sending'} />
             {item.error && (
               <div role="alert" className="mt-1 flex items-center justify-end gap-2 text-sm text-red-400">
                 <span>{item.error}</span>
                 <button type="button" className="font-semibold underline" onClick={() => retry(item)}>Retry</button>
-                <button type="button" className="font-semibold underline" onClick={() => setPending((p) => p.filter((x) => x.key !== item.key))}>Discard</button>
+                <button type="button" className="font-semibold underline" onClick={() => discard(item)}>Discard</button>
               </div>
             )}
           </div>

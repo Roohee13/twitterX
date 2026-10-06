@@ -103,6 +103,8 @@ export interface LastMessage {
   content: string
   createdAt: string
   deleted: boolean
+  /** It carries photos (its text may be empty). */
+  hasMedia?: boolean
 }
 
 export interface ConversationResponse {
@@ -126,6 +128,8 @@ export interface MessageResponse {
   /** When the sender last changed the text; null if never edited. */
   editedAt: string | null
   deleted: boolean
+  /** The attached photos, in order; empty for none and once deleted. */
+  mediaUrls?: string[]
 }
 
 export interface UploadUrlResponse {

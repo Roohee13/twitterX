@@ -5,6 +5,7 @@ import type { UploadUrlResponse } from './types'
 export const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 export const MAX_IMAGES_PER_POST = 4
+export const MAX_IMAGES_PER_MESSAGE = 4
 
 /** Returns a message when the file cannot be uploaded, otherwise null. */
 export function validateImage(file: Pick<File, 'type' | 'size' | 'name'>): string | null {

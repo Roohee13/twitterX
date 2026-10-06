@@ -48,7 +48,7 @@ function serve(initial: { conversations: ConversationResponse[]; messages?: Reco
   const state = {
     conversations: [...initial.conversations],
     messages: { ...(initial.messages ?? {}) } as Record<number, MessageResponse[]>, // oldest first
-    sent: [] as Array<{ conversationId: number; content: string }>,
+    sent: [] as Array<{ conversationId: number; content: string; mediaKeys?: string[] }>,
     read: [] as number[],
     started: [] as string[],
     failNextSend: null as string | null,
@@ -84,7 +84,7 @@ function serve(initial: { conversations: ConversationResponse[]; messages?: Reco
       return HttpResponse.json(pageOf(state.messages[Number(params.id)] ?? [], cursor, limit))
     }),
     http.post(`${BASE}/api/conversations/:id/messages`, async ({ params, request }) => {
-      const { content } = (await request.json()) as { content: string }
+      const { content, mediaKeys } = (await request.json()) as { content: string; mediaKeys?: string[] }
       const id = Number(params.id)
       if (state.sendDelay[content]) await new Promise((r) => setTimeout(r, state.sendDelay[content]))
       if (state.failNextSend) {
@@ -92,10 +92,10 @@ function serve(initial: { conversations: ConversationResponse[]; messages?: Reco
         state.failNextSend = null
         return HttpResponse.json({ status: 403, detail }, { status: 403 })
       }
-      state.sent.push({ conversationId: id, content })
-      const saved = message(id, 'me', content, { createdAt: new Date().toISOString() })
+      state.sent.push({ conversationId: id, content, ...(mediaKeys ? { mediaKeys } : {}) })
+      const saved = message(id, 'me', content, { createdAt: new Date().toISOString(), mediaUrls: (mediaKeys ?? []).map((k) => `https://media.test/${k}`) })
       state.messages[id] = [...(state.messages[id] ?? []), saved]
-      state.conversations = state.conversations.map((c) => (c.id === id ? { ...c, lastMessage: { id: saved.id, senderId: me.id, content, createdAt: saved.createdAt, deleted: false } } : c))
+      state.conversations = state.conversations.map((c) => (c.id === id ? { ...c, lastMessage: { id: saved.id, senderId: me.id, content, createdAt: saved.createdAt, deleted: false, hasMedia: (mediaKeys ?? []).length > 0 } } : c))
       return HttpResponse.json(saved, { status: 201 })
     }),
     http.patch(`${BASE}/api/conversations/:id/messages/:messageId`, async ({ params, request }) => {
@@ -742,5 +742,156 @@ describe('deleting a conversation', () => {
     await userEvent.click(within(await menu()).getByRole('button', { name: 'Delete' }))
 
     await waitFor(() => expect(state.deletedConversations).toEqual([1]))
+  })
+})
+
+describe('photos in messages', () => {
+  const png = (name = 'cat.png') => new File([new Uint8Array(64)], name, { type: 'image/png' })
+  let uploads = 0
+  const uploadHandlers = (gate?: Promise<void>) => [
+    http.post(`${BASE}/api/media/upload-url`, () => {
+      uploads += 1
+      return HttpResponse.json({ key: `users/${me.id}/p${uploads}.png`, uploadUrl: `https://r2.test/up${uploads}`, headers: { 'content-type': ['image/png'] }, publicUrl: `https://media.test/p${uploads}.png`, expiresAt: 'x' })
+    }),
+    http.put(/https:\/\/r2\.test\/up\d/, async () => {
+      await gate
+      return new HttpResponse(null, { status: 200 })
+    }),
+  ]
+  beforeEach(() => {
+    uploads = 0
+  })
+
+  it('shows a photo message from the other person, with its text', async () => {
+    open('/messages/1', serve({ conversations: [conversation(1)], messages: { 1: [message(1, 'them', 'look at this', { mediaUrls: ['https://media.test/a.png', 'https://media.test/b.png'] }), message(1, 'them', '', { mediaUrls: ['https://media.test/c.png'] })] } }))
+
+    expect(await screen.findByText('look at this')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Photo 1 of 2 in the message' })).toHaveAttribute('src', 'https://media.test/a.png')
+    expect(screen.getByRole('img', { name: 'Photo 2 of 2 in the message' })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Photo in the message' })).toHaveAttribute('src', 'https://media.test/c.png')
+    expect(screen.getByRole('link', { name: 'Open photo' })).toHaveAttribute('target', '_blank')
+  })
+
+  it('uploads a chosen photo, sends only its key, and a photo alone is enough', async () => {
+    server.use(...uploadHandlers())
+    const { state } = open('/messages/1', serve({ conversations: [conversation(1)] }))
+    const send = await screen.findByRole('button', { name: 'Send message' })
+    expect(send).toBeDisabled()
+
+    await userEvent.upload(screen.getByLabelText('Choose photos'), png())
+
+    await waitFor(() => expect(send).toBeEnabled())
+    await userEvent.click(send)
+
+    await waitFor(() => expect(state.sent).toEqual([{ conversationId: 1, content: '', mediaKeys: [`users/${me.id}/p1.png`] }]))
+    expect(await screen.findByRole('img', { name: 'Photo in the message' })).toHaveAttribute('src', `https://media.test/users/${me.id}/p1.png`)
+    expect(screen.queryByRole('list', { name: 'Photos to send' })).not.toBeInTheDocument() // the box is clear again
+  })
+
+  it('sends text and several photos together', async () => {
+    server.use(...uploadHandlers())
+    const { state } = open('/messages/1', serve({ conversations: [conversation(1)] }))
+
+    await userEvent.upload(await screen.findByLabelText('Choose photos'), [png('1.png'), png('2.png')])
+    await waitFor(() => expect(screen.getAllByRole('img', { name: 'Selected photo preview' })).toHaveLength(2))
+    await userEvent.type(textbox(), 'two for you')
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Send message' })).toBeEnabled())
+    await userEvent.keyboard('{Enter}')
+
+    await waitFor(() => expect(state.sent).toHaveLength(1))
+    expect(state.sent[0]).toMatchObject({ content: 'two for you', mediaKeys: [`users/${me.id}/p1.png`, `users/${me.id}/p2.png`] })
+  })
+
+  it('cannot send while a photo is still uploading', async () => {
+    let release!: () => void
+    server.use(...uploadHandlers(new Promise<void>((r) => (release = r))))
+    open('/messages/1', serve({ conversations: [conversation(1)] }))
+
+    await userEvent.upload(await screen.findByLabelText('Choose photos'), png())
+    await userEvent.type(textbox(), 'wait for it')
+
+    expect(screen.getByRole('progressbar', { name: 'Uploading photo' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled()
+    release()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Send message' })).toBeEnabled())
+  })
+
+  it('removes a photo before sending, limits to four, and refuses other file types', async () => {
+    server.use(...uploadHandlers())
+    open('/messages/1', serve({ conversations: [conversation(1)] }))
+    const input = await screen.findByLabelText('Choose photos')
+
+    await userEvent.upload(input, [png('1.png'), png('2.png'), png('3.png'), png('4.png'), png('5.png')])
+
+    await waitFor(() => expect(screen.getAllByRole('img', { name: 'Selected photo preview' })).toHaveLength(4))
+    expect(screen.getByRole('alert')).toHaveTextContent('at most 4 photos')
+    expect(screen.getByRole('button', { name: 'Add photos' })).toBeDisabled()
+
+    await userEvent.click(screen.getAllByRole('button', { name: 'Remove photo' })[0])
+    expect(screen.getAllByRole('img', { name: 'Selected photo preview' })).toHaveLength(3)
+    expect(screen.getByRole('button', { name: 'Add photos' })).toBeEnabled()
+
+    await userEvent.upload(input, new File(['x'], 'notes.pdf', { type: 'application/pdf' }), { applyAccept: false })
+    expect(screen.getByRole('alert')).toHaveTextContent('notes.pdf')
+  })
+
+  it('shows a failed upload and blocks sending until the photo is removed', async () => {
+    server.use(http.post(`${BASE}/api/media/upload-url`, () => HttpResponse.json({ status: 503, detail: 'Media storage is not configured' }, { status: 503 })))
+    open('/messages/1', serve({ conversations: [conversation(1)] }))
+
+    await userEvent.upload(await screen.findByLabelText('Choose photos'), png())
+    expect(await screen.findByText('Image uploads are not set up on this server yet.')).toBeInTheDocument()
+    await userEvent.type(textbox(), 'hello')
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Remove photo' }))
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeEnabled()
+  })
+
+  it('keeps the photos of a message that failed to send, so Retry sends them again', async () => {
+    server.use(...uploadHandlers())
+    const { state } = open('/messages/1', serve({ conversations: [conversation(1)] }))
+    state.failNextSend = 'Network trouble'
+
+    await userEvent.upload(await screen.findByLabelText('Choose photos'), png())
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Send message' })).toBeEnabled())
+    await userEvent.click(screen.getByRole('button', { name: 'Send message' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Network trouble')
+    await userEvent.click(screen.getByRole('button', { name: 'Retry' }))
+
+    await waitFor(() => expect(state.sent).toHaveLength(1))
+    expect(state.sent[0].mediaKeys).toEqual([`users/${me.id}/p1.png`])
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
+  })
+
+  it('says in the inbox that a photo was sent', async () => {
+    const photo = message(1, 'me', 'caption', { mediaUrls: ['https://media.test/a.png'] })
+    const state = serve({
+      conversations: [conversation(1, dana, { lastMessage: { id: 7, senderId: dana.id, content: '', createdAt: minutesAgo(1), deleted: false, hasMedia: true } })],
+      messages: { 1: [photo] },
+    })
+    open('/messages', state)
+    expect(await screen.findByText('Sent a photo')).toBeInTheDocument()
+  })
+
+  it('lets you clear the caption of a photo message and shows the photos gone after deleting it', async () => {
+    const photo = message(1, 'me', 'caption', { mediaUrls: ['https://media.test/a.png'] })
+    const { state } = open('/messages/1', serve({ conversations: [conversation(1)], messages: { 1: [photo] } }))
+    await screen.findByText('caption')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Message actions' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Edit' }))
+    await userEvent.clear(screen.getByRole('textbox', { name: 'Edit message' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(state.edits).toEqual([{ id: photo.id, content: '' }]))
+    expect(screen.getByRole('img', { name: 'Photo in the message' })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Message actions' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Delete' }))
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Delete' }))
+
+    expect(await screen.findByText('You deleted this message')).toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: /in the message/ })).not.toBeInTheDocument()
   })
 })

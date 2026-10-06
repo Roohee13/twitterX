@@ -1,8 +1,11 @@
 import type { ReactNode } from 'react'
 import { fullDate } from '../../lib/time'
+import { MessagePhotos } from './MessagePhotos'
 
 interface MessageBubbleProps {
   content: string
+  /** Photos shown above the text (a photo-only message has no text). */
+  mediaUrls?: string[]
   createdAt?: string
   mine: boolean
   /** Waiting for the server, or it did not go through. */
@@ -17,7 +20,7 @@ interface MessageBubbleProps {
 
 const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
-export function MessageBubble({ content, createdAt, mine, state, edited = false, deleted = false, actions }: MessageBubbleProps) {
+export function MessageBubble({ content, mediaUrls = [], createdAt, mine, state, edited = false, deleted = false, actions }: MessageBubbleProps) {
   const shape = mine ? 'rounded-br-sm' : 'rounded-bl-sm'
   return (
     <div className={`flex flex-col ${mine ? 'items-end' : 'items-start'}`}>
@@ -27,9 +30,10 @@ export function MessageBubble({ content, createdAt, mine, state, edited = false,
             {mine ? 'You deleted this message' : 'This message was deleted'}
           </p>
         ) : (
-          <p className={`whitespace-pre-wrap break-words rounded-2xl px-4 py-2 ${mine ? `${shape} bg-brand-solid text-white` : `${shape} bg-zinc-800`} ${state === 'sending' ? 'opacity-60' : ''}`}>
-            {content}
-          </p>
+          <div className={`min-w-0 overflow-hidden rounded-2xl ${mine ? `${shape} bg-brand-solid text-white` : `${shape} bg-zinc-800`} ${state === 'sending' ? 'opacity-60' : ''}`}>
+            <MessagePhotos urls={mediaUrls} />
+            {content && <p className="whitespace-pre-wrap break-words px-4 py-2">{content}</p>}
+          </div>
         )}
         {actions && (
           // Out of the way until the pointer or the keyboard is on the message (always there on touch screens, which cannot hover).

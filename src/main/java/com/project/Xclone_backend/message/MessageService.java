@@ -2,6 +2,7 @@ package com.project.Xclone_backend.message;
 
 import java.time.Instant;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -14,6 +15,8 @@ import com.project.Xclone_backend.common.CursorPage;
 import com.project.Xclone_backend.conversation.Conversation;
 import com.project.Xclone_backend.conversation.ConversationRepository;
 import com.project.Xclone_backend.conversation.ConversationService;
+import com.project.Xclone_backend.config.R2Properties;
+import com.project.Xclone_backend.media.MediaService;
 import com.project.Xclone_backend.common.ApiException;
 import com.project.Xclone_backend.message.MessageDtos.MessageResponse;
 import com.project.Xclone_backend.message.MessageDtos.UnreadCountResponse;
@@ -32,14 +35,26 @@ public class MessageService {
     private final UserService userService;
     private final UserMapper userMapper;
     private final ApplicationEventPublisher events;
+    private final MediaService mediaService;
+    private final R2Properties r2;
 
     @Transactional
-    public MessageResponse send(Long meId, Long conversationId, String content) {
+    public MessageResponse send(Long meId, Long conversationId, String content, List<String> mediaKeys) {
         Conversation conversation = conversationService.requireAccessible(meId, conversationId);
+        String text = content == null ? "" : content.strip();
+        List<String> keys = mediaKeys == null ? List.of() : List.copyOf(new LinkedHashSet<>(mediaKeys));
+        if (text.isEmpty() && keys.isEmpty()) {
+            throw ApiException.badRequest("A message needs some text or a photo");
+        }
+        if (keys.size() > Message.MAX_MEDIA) {
+            throw ApiException.badRequest("A message can have at most " + Message.MAX_MEDIA + " photos");
+        }
+        keys.forEach(key -> mediaService.verifyOwnedUpload(meId, key));
         Message message = new Message();
         message.setConversation(conversation);
         message.setSender(userService.requireById(meId));
-        message.setContent(content.strip());
+        message.setContent(text);
+        keys.forEach(message::addMedia);
         messageRepository.save(message);
         conversationRepository.touch(conversationId, Instant.now());
         MessageResponse response = toResponse(message);
@@ -73,8 +88,8 @@ public class MessageService {
         if (message.isDeleted()) {
             throw ApiException.conflict("This message was deleted");
         }
-        String text = content.strip();
-        if (text.isEmpty()) {
+        String text = content == null ? "" : content.strip();
+        if (text.isEmpty() && message.getMedia().isEmpty()) {
             throw ApiException.badRequest("Message cannot be empty");
         }
         if (!text.equals(message.getContent())) {
@@ -94,6 +109,7 @@ public class MessageService {
         }
         message.setDeleted(true);
         message.setContent("");
+        message.getMedia().clear(); // the photos go with it
         announceChange(meId, message);
     }
 
@@ -135,6 +151,7 @@ public class MessageService {
 
     private MessageResponse toResponse(Message m) {
         return new MessageResponse(m.getId(), m.getConversation().getId(), userMapper.toSummary(m.getSender()),
-                m.getContent(), m.getCreatedAt(), m.getEditedAt(), m.isDeleted());
+                m.getContent(), m.getCreatedAt(), m.getEditedAt(), m.isDeleted(),
+                m.getMedia().stream().map(x -> r2.publicUrl(x.getR2Key())).toList());
     }
 }
