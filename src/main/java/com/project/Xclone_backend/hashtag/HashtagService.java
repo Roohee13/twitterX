@@ -29,19 +29,31 @@ public class HashtagService {
     private static final Pattern HASHTAG =
             Pattern.compile("(?<![\\p{L}\\p{N}_#&/])#([\\p{L}\\p{N}_]*\\p{L}[\\p{L}\\p{N}_]*)");
 
-    public static final int TRENDING_DEFAULT_HOURS = 24;
+    public static final int TRENDING_DEFAULT_HOURS = 6;
+    /** The days before the recent window that show what is normal for a tag. */
+    public static final int TRENDING_BASELINE_HOURS = 7 * 24;
+    private static final int TRENDING_CANDIDATES = 200;
     public static final int TRENDING_MAX_HOURS = 168;
     public static final int TRENDING_DEFAULT_LIMIT = 10;
     public static final int TRENDING_MAX_LIMIT = 50;
 
     private final HashtagRepository hashtagRepository;
+    private final TrendingProperties trendingProperties;
 
-    /** Hashtags most used by live posts in the last {@code hours} hours (default 24, max 7 days). */
+    /**
+     * Tags whose use in the last {@code hours} (default 6, max 7 days) is highest compared with their normal level over the week before,
+     * needing at least {@code app.trending.min-authors} different authors. See {@link TrendScorer}.
+     */
     @Transactional(readOnly = true)
     public List<TrendingHashtag> trending(Integer hours, Integer limit) {
         int h = hours == null || hours <= 0 ? TRENDING_DEFAULT_HOURS : Math.min(hours, TRENDING_MAX_HOURS);
         int n = limit == null || limit <= 0 ? TRENDING_DEFAULT_LIMIT : Math.min(limit, TRENDING_MAX_LIMIT);
-        return hashtagRepository.findTrending(Instant.now().minus(Duration.ofHours(h)), Limit.of(n));
+        Instant now = Instant.now();
+        Instant recentSince = now.minus(Duration.ofHours(h));
+        Instant halfSince = now.minus(Duration.ofMinutes(h * 30L));
+        Instant since = recentSince.minus(Duration.ofHours(TRENDING_BASELINE_HOURS));
+        var candidates = hashtagRepository.findTrendCandidates(since, recentSince, halfSince, trendingProperties.minAuthors(), Limit.of(TRENDING_CANDIDATES));
+        return TrendScorer.rank(candidates, h, TRENDING_BASELINE_HOURS, n);
     }
 
     /** Distinct normalized tags in order of first appearance. */

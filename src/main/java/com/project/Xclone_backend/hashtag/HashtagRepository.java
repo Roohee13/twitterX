@@ -9,7 +9,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
-import com.project.Xclone_backend.hashtag.HashtagDtos.TrendingHashtag;
+import com.project.Xclone_backend.hashtag.HashtagDtos.TrendCandidate;
 
 public interface HashtagRepository extends JpaRepository<Hashtag, Long> {
 
@@ -21,16 +21,24 @@ public interface HashtagRepository extends JpaRepository<Hashtag, Long> {
     List<Hashtag> findByNameIn(Collection<String> names);
 
     /**
-     * Tags used by live posts of public accounts created since {@code since}, ranked by distinct authors (so one account spamming a
-     * tag cannot trend it alone), then by post count, then name for a stable order.
+     * Activity per tag for trending, from live posts of active public accounts created since {@code since} (the start of the baseline):
+     * posts and distinct authors since {@code recentSince}, distinct authors since {@code halfSince} (the newest part of that window) and
+     * posts before {@code recentSince}. Tags with fewer than {@code minAuthors} recent authors are left out; the busiest
+     * candidates come first and {@link TrendScorer} ranks them.
      */
     @Query("""
-            select new com.project.Xclone_backend.hashtag.HashtagDtos$TrendingHashtag(
-                   h.name, count(distinct p.id), count(distinct p.author.id))
+            select new com.project.Xclone_backend.hashtag.HashtagDtos$TrendCandidate(
+                   h.name,
+                   count(distinct case when p.createdAt >= :recentSince then p.id end),
+                   count(distinct case when p.createdAt >= :recentSince then p.author.id end),
+                   count(distinct case when p.createdAt >= :halfSince then p.author.id end),
+                   count(distinct case when p.createdAt < :recentSince then p.id end))
             from Post p join p.hashtags h
-            where p.deleted = false and p.author.protectedAccount = false and p.createdAt >= :since
+            where p.deleted = false and p.author.status = com.project.Xclone_backend.user.AccountStatus.ACTIVE
+              and p.author.protectedAccount = false and p.createdAt >= :since
             group by h.name
-            order by count(distinct p.author.id) desc, count(distinct p.id) desc, h.name asc
+            having count(distinct case when p.createdAt >= :recentSince then p.author.id end) >= :minAuthors
+            order by count(distinct case when p.createdAt >= :recentSince then p.author.id end) desc, h.name asc
             """)
-    List<TrendingHashtag> findTrending(Instant since, Limit limit);
+    List<TrendCandidate> findTrendCandidates(Instant since, Instant recentSince, Instant halfSince, long minAuthors, Limit limit);
 }

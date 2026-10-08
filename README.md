@@ -195,6 +195,7 @@ All endpoints are under `/api`. Send `Authorization: Bearer <accessToken>` for a
 | POST | `/auth/forgot-password` | – | `{email}`; always 204 so it can't be used to find accounts; emails a reset link (valid 1h) to active accounts |
 | POST | `/auth/reset-password` | – | `{token, newPassword}`; sets the password and signs out every session; 400 if invalid, expired or already used |
 | GET / PATCH | `/users/me` | ✓ | PATCH `{displayName?, bio?, avatarKey?, bannerKey?, protectedAccount?}`; `""` clears. See *Protected accounts* below |
+| GET | `/trending/hashtags?hours=&limit=` | – | tags that are rising: see *Trending* below; `{name, postCount, userCount}` (counts are for the recent window) |
 | GET | `/users/search?q=` | – | prefix match on username / display name |
 | GET | `/users/me/blocks` | ✓ | users you blocked, paged |
 | GET | `/users/{username}` | optional | profile + counts + `followedByMe` + `blockedByMe` + `mutedByMe` |
@@ -239,6 +240,16 @@ The owner is notified of requests (`FOLLOW_REQUEST`). Turning protection off app
 - A post you write appears at the top of the feed you are looking at at once, but the next time the feed is reloaded it sits where its score puts it (a new post has no likes yet); it is always on your profile and in Following.
 
 **Pagination.** Paged endpoints accept `?cursor=&limit=` (default 20, max 50) and return `{ items, nextCursor }`. Pass `nextCursor` back to get the next page; `null` means there are no more pages.
+
+## Trending
+
+`GET /api/trending/hashtags` ranks tags by how far their recent use rises above their normal level, not by raw volume (`hashtag/TrendScorer.java`):
+
+- The **recent window** is the last `hours` (default 6, max 168). Only live posts of active, public accounts count.
+- `score = (distinct authors in the window + distinct authors in its newest half) / (1 + the tag's usual posts per window, from the 7 days before)`.
+  So a tag that is busy all the time stays down, a sudden jump goes up, the newest posts count more, and one account repeating a tag adds nothing.
+- A tag needs at least `TRENDING_MIN_AUTHORS` (default 2) different authors in the window before it can trend; a brand-new tag with enough authors can.
+  Raise it on a busy site. The list is the same for everyone and covers hashtags only.
 
 ## Deactivated accounts
 

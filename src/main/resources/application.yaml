@@ -85,6 +85,9 @@ app:
     # Fan WebSocket pushes out through Redis so they reach users connected to any instance. Falls back to local
     # delivery when Redis is down. Set false to skip Redis entirely (single instance).
     redis-relay: ${WS_REDIS_RELAY:true}
+  trending:
+    # Different accounts that must use a tag in the recent window before it can trend (one account alone never can). Raise it on a busy site.
+    min-authors: ${TRENDING_MIN_AUTHORS:2}
   rate-limit:
     enabled: ${RATE_LIMIT_ENABLED:true}
   cors:

@@ -28,18 +28,18 @@ public class User {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    /** Stored lowercase so uniqueness and lookups are case-insensitive. */
+
     @Column(nullable = false, unique = true, length = 15)
     private String username;
 
-    /** Stored lowercase. */
+
     @Column(nullable = false, unique = true, length = 254)
     private String email;
 
     @Column(nullable = false)
     private String passwordHash;
 
-    /** The column default lets ddl-auto add this column to tables that already have rows: existing accounts count as verified. */
+
     @ColumnDefault("true")
     @Column(nullable = false)
     private boolean emailVerified = true;
@@ -54,21 +54,16 @@ public class User {
 
     private String bannerKey;
 
-    /** The column default lets ddl-auto add this column to tables that already have rows. */
     @Enumerated(EnumType.STRING)
     @ColumnDefault("'ACTIVE'")
     @Column(nullable = false, length = 20)
     private AccountStatus status = AccountStatus.ACTIVE;
 
-    /**
-     * Posts are visible only to the owner and approved followers, and following needs approval. The column default lets
-     * ddl-auto add this column to tables that already have rows.
-     */
+
     @ColumnDefault("false")
     @Column(nullable = false)
     private boolean protectedAccount;
 
-    /** Can use the admin endpoints (report review). Granted by hand in the database; there is no way to become one through the API. */
     @ColumnDefault("false")
     @Column(name = "is_admin", nullable = false)
     private boolean admin;
