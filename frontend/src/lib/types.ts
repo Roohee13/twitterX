@@ -2,6 +2,32 @@
 
 export type ReplyPolicy = 'EVERYONE' | 'FOLLOWING' | 'MENTIONED'
 
+/** Who may message an account. Someone the account has already written to can always answer. */
+export type DmPolicy = 'EVERYONE' | 'FOLLOWED' | 'NOBODY'
+
+export interface PollOption {
+  id: number
+  text: string
+  voteCount: number
+}
+
+/** A poll on a post. Results are visible to everyone; `myVoteOptionId` is null until the viewer votes. */
+export interface Poll {
+  id: number
+  options: PollOption[]
+  totalVotes: number
+  expiresAt: string
+  ended: boolean
+  myVoteOptionId: number | null
+}
+
+/** A word or phrase whose posts the signed-in user does not want to see. */
+export interface MutedWord {
+  id: number
+  word: string
+  createdAt: string
+}
+
 export interface CursorPage<T> {
   items: T[]
   /** Pass back as `cursor` for the next page; null when there are no more. */
@@ -32,6 +58,7 @@ export interface UserResponse {
   protectedAccount: boolean
   /** Can open the admin pages (report review). Granted in the database, never through the app. */
   admin: boolean
+  dmPolicy: DmPolicy
 }
 
 export interface ProfileResponse {
@@ -50,6 +77,8 @@ export interface ProfileResponse {
   mutedByMe: boolean
   protectedAccount: boolean
   followRequestedByMe: boolean
+  /** The viewer may start or continue a chat with this account right now (false when signed out, for yourself, when blocked, or when they closed their inbox). */
+  canMessage: boolean
   /** A deactivated account: only the name "XClone user" is real, everything else is empty. */
   unavailable?: boolean
 }
@@ -81,6 +110,8 @@ export interface PostResponse {
   replyPolicy: ReplyPolicy
   canReply: boolean
   bookmarkedByMe: boolean
+  /** Null for a post without a poll. */
+  poll: Poll | null
 }
 
 export type NotificationType = 'FOLLOW' | 'LIKE' | 'REPLY' | 'MENTION' | 'REPOST' | 'FOLLOW_REQUEST' | 'REPORT_RECEIVED' | 'POST_REMOVED' | 'REPORT_OUTCOME'

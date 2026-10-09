@@ -7,11 +7,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.Duration;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.junit.jupiter.api.Test;
 
-import com.project.Xclone_backend.user.AccountStatus;
 import com.project.Xclone_backend.user.UserRepository;
 
 class ActiveUserCacheTest {
@@ -25,46 +25,57 @@ class ActiveUserCacheTest {
 
     @Test
     void activeIsRememberedUntilTheTtlExpires() {
-        when(repo.existsByIdAndStatus(1L, AccountStatus.ACTIVE)).thenReturn(true);
+        when(repo.findActiveTokenVersion(1L)).thenReturn(Optional.of(0));
         ActiveUserCache cache = cache(Duration.ofSeconds(10));
 
-        assertThat(cache.isActive(1L)).isTrue();
+        assertThat(cache.isCurrent(1L, 0)).isTrue();
         clock.addAndGet(Duration.ofSeconds(9).toNanos());
-        assertThat(cache.isActive(1L)).isTrue();
-        verify(repo, times(1)).existsByIdAndStatus(1L, AccountStatus.ACTIVE);
+        assertThat(cache.isCurrent(1L, 0)).isTrue();
+        verify(repo, times(1)).findActiveTokenVersion(1L);
 
         clock.addAndGet(Duration.ofSeconds(2).toNanos());
-        assertThat(cache.isActive(1L)).isTrue();
-        verify(repo, times(2)).existsByIdAndStatus(1L, AccountStatus.ACTIVE);
+        assertThat(cache.isCurrent(1L, 0)).isTrue();
+        verify(repo, times(2)).findActiveTokenVersion(1L);
     }
 
     @Test
     void inactiveIsNeverCachedSoReactivationWorksImmediately() {
-        when(repo.existsByIdAndStatus(2L, AccountStatus.ACTIVE)).thenReturn(false, true);
+        when(repo.findActiveTokenVersion(2L)).thenReturn(Optional.empty(), Optional.of(0));
         ActiveUserCache cache = cache(Duration.ofSeconds(10));
 
-        assertThat(cache.isActive(2L)).isFalse();
-        assertThat(cache.isActive(2L)).isTrue();
+        assertThat(cache.isCurrent(2L, 0)).isFalse();
+        assertThat(cache.isCurrent(2L, 0)).isTrue();
     }
 
     @Test
     void evictForcesTheNextCheckToHitTheDatabase() {
-        when(repo.existsByIdAndStatus(3L, AccountStatus.ACTIVE)).thenReturn(true, false);
+        when(repo.findActiveTokenVersion(3L)).thenReturn(Optional.of(0), Optional.empty());
         ActiveUserCache cache = cache(Duration.ofSeconds(10));
 
-        assertThat(cache.isActive(3L)).isTrue();
+        assertThat(cache.isCurrent(3L, 0)).isTrue();
         cache.evict(3L);
-        assertThat(cache.isActive(3L)).isFalse();
+        assertThat(cache.isCurrent(3L, 0)).isFalse();
     }
 
     @Test
     void zeroTtlChecksTheDatabaseEveryTime() {
-        when(repo.existsByIdAndStatus(4L, AccountStatus.ACTIVE)).thenReturn(true);
+        when(repo.findActiveTokenVersion(4L)).thenReturn(Optional.of(0));
         ActiveUserCache cache = cache(Duration.ZERO);
 
-        cache.isActive(4L);
-        cache.isActive(4L);
+        cache.isCurrent(4L, 0);
+        cache.isCurrent(4L, 0);
 
-        verify(repo, times(2)).existsByIdAndStatus(4L, AccountStatus.ACTIVE);
+        verify(repo, times(2)).findActiveTokenVersion(4L);
+    }
+
+    @Test
+    void aTokenFromBeforeAVersionBumpIsRefusedAsSoonAsTheEntryIsEvicted() {
+        when(repo.findActiveTokenVersion(5L)).thenReturn(Optional.of(0), Optional.of(1));
+        ActiveUserCache cache = cache(Duration.ofSeconds(10));
+
+        assertThat(cache.isCurrent(5L, 0)).isTrue();
+        cache.evict(5L); // what a password change does after it commits
+        assertThat(cache.isCurrent(5L, 0)).isFalse();
+        assertThat(cache.isCurrent(5L, 1)).isTrue();
     }
 }

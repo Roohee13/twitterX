@@ -3,7 +3,7 @@ import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { configureApi } from './api'
 import { tokens } from './tokens'
-import { MAX_IMAGE_BYTES, uploadImage, validateImage } from './upload'
+import { MAX_IMAGE_BYTES, MAX_VIDEO_BYTES, isVideoUrl, uploadImage, validateImage, validateVideo } from './upload'
 
 const BASE = 'http://api.test'
 const server = setupServer()
@@ -16,6 +16,27 @@ beforeEach(() => {
 afterEach(() => server.resetHandlers())
 
 const image = (type = 'image/png', size = 100, name = 'cat.png') => new File([new Uint8Array(size)], name, { type })
+
+describe('validateVideo', () => {
+  const video = (type = 'video/mp4', size = 100, name = 'clip.mp4') => ({ type, size, name })
+
+  it('accepts MP4 and WebM within the limit', () => {
+    expect(validateVideo(video())).toBeNull()
+    expect(validateVideo(video('video/webm', MAX_VIDEO_BYTES, 'clip.webm'))).toBeNull()
+  })
+
+  it('explains what is wrong', () => {
+    expect(validateVideo(video('video/quicktime', 10, 'clip.mov'))).toMatch(/MP4 or WebM/)
+    expect(validateVideo(video('video/mp4', MAX_VIDEO_BYTES + 1))).toMatch(/at most 50 MB/)
+    expect(validateVideo(video('video/mp4', 0))).toMatch(/empty/)
+  })
+
+  it('tells videos from images by the address the server built', () => {
+    expect(isVideoUrl('https://media.test/users/1/abc.mp4')).toBe(true)
+    expect(isVideoUrl('https://media.test/users/1/abc.WEBM')).toBe(true)
+    expect(isVideoUrl('https://media.test/users/1/abc.png')).toBe(false)
+  })
+})
 
 describe('validateImage', () => {
   it('accepts the four supported types', () => {

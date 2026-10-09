@@ -22,6 +22,10 @@ public interface EmailTokenRepository extends JpaRepository<EmailToken, Long> {
     void deleteAllForUserAndType(Long userId, EmailTokenType type);
 
     @Modifying
+    @Query("delete from EmailToken t where t.expiresAt < :now")
+    int deleteExpired(java.time.Instant now);
+
+    @Modifying
     @Query("delete from EmailToken t where t.user.id = :userId")
     void deleteAllForUser(Long userId);
 }

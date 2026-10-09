@@ -24,7 +24,10 @@ import com.project.Xclone_backend.common.ApiException;
 import com.project.Xclone_backend.config.R2Properties;
 import com.project.Xclone_backend.media.MediaDtos.UploadUrlResponse;
 
+import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
 import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
@@ -35,7 +38,7 @@ import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignReques
 class MediaServiceTest {
 
     private final R2Properties props = new R2Properties("acct", "ak", "sk", "bucket", "https://cdn.example/",
-            Duration.ofMinutes(10), 5_000_000, "");
+            Duration.ofMinutes(10), 5_000_000, 50_000_000, "");
 
     private S3Client s3;
     private S3Presigner presigner;
@@ -98,6 +101,63 @@ class MediaServiceTest {
         when(s3.headObject(any(HeadObjectRequest.class)))
                 .thenReturn(HeadObjectResponse.builder().contentType("image/webp").contentLength(10L).build());
         service.verifyOwnedUpload(1L, "users/1/ok.webp");
+    }
+
+    @Test
+    void videoUploadsHaveTheirOwnTypesAndLimit() throws Exception {
+        PresignedPutObjectRequest presigned = mock(PresignedPutObjectRequest.class);
+        when(presigned.url()).thenReturn(URI.create("https://signed.example/put").toURL());
+        when(presigned.signedHeaders()).thenReturn(Map.of());
+        when(presigned.expiration()).thenReturn(Instant.parse("2030-01-01T00:00:00Z"));
+        when(presigner.presignPutObject(any(PutObjectPresignRequest.class))).thenReturn(presigned);
+
+        assertThat(service.createUploadUrl(7L, "video/mp4", 40_000_000).key()).startsWith("users/7/").endsWith(".mp4");
+        assertThat(service.createUploadUrl(7L, "video/webm", 1000).key()).endsWith(".webm");
+        // Larger than an image may be, but not larger than the video limit; other formats are refused.
+        assertThatThrownBy(() -> service.createUploadUrl(7L, "video/mp4", 50_000_001)).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> service.createUploadUrl(7L, "video/quicktime", 1000)).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> service.createUploadUrl(7L, "image/png", 5_000_001)).isInstanceOf(ApiException.class);
+    }
+
+    private void stubObject(String type, long length, byte[] firstBytes) {
+        when(s3.headObject(any(HeadObjectRequest.class))).thenReturn(HeadObjectResponse.builder().contentType(type).contentLength(length).build());
+        when(s3.getObjectAsBytes(any(GetObjectRequest.class)))
+                .thenReturn(ResponseBytes.fromByteArray(GetObjectResponse.builder().build(), firstBytes));
+    }
+
+    private static final byte[] MP4 = {0, 0, 0, 0x18, 'f', 't', 'y', 'p', 'm', 'p', '4', '2', 0, 0, 0, 0};
+    private static final byte[] WEBM = {0x1A, 0x45, (byte) 0xDF, (byte) 0xA3, 1, 0, 0, 0, 0, 0, 0, 0x1F, 0x42, (byte) 0x86, (byte) 0x81, 1};
+
+    @Test
+    void aPostAcceptsOneRealVideoAndChecksItsBytes() {
+        stubObject("video/mp4", 10_000_000, MP4);
+        service.verifyOwnedAttachments(1L, List.of("users/1/clip.mp4"));
+        stubObject("video/webm", 10_000_000, WEBM);
+        service.verifyOwnedAttachments(1L, List.of("users/1/clip.webm"));
+    }
+
+    @Test
+    void aVideoFileThatIsNotAVideoIsRefused() {
+        stubObject("video/mp4", 100, "<html>not a video</html>".getBytes());
+        assertThatThrownBy(() -> service.verifyOwnedAttachments(1L, List.of("users/1/fake.mp4"))).isInstanceOf(ApiException.class);
+        stubObject("video/webm", 100, MP4); // right bytes for the wrong container
+        assertThatThrownBy(() -> service.verifyOwnedAttachments(1L, List.of("users/1/fake.webm"))).isInstanceOf(ApiException.class);
+    }
+
+    @Test
+    void aVideoMustBeTheOnlyAttachmentAndOversizedOnesAreRefused() {
+        stubObject("video/mp4", 10_000_000, MP4);
+        assertThatThrownBy(() -> service.verifyOwnedAttachments(1L, List.of("users/1/clip.mp4", "users/1/a.png"))).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> service.verifyOwnedAttachments(1L, List.of("users/1/a.png", "users/1/clip.mp4"))).isInstanceOf(ApiException.class);
+        stubObject("video/mp4", 50_000_001, MP4);
+        assertThatThrownBy(() -> service.verifyOwnedAttachments(1L, List.of("users/1/big.mp4"))).isInstanceOf(ApiException.class);
+    }
+
+    @Test
+    void videosAreNotAcceptedWhereOnlyImagesBelong() {
+        stubObject("video/mp4", 10_000_000, MP4);
+        // Avatars, banners and direct messages go through verifyOwnedUpload.
+        assertThatThrownBy(() -> service.verifyOwnedUpload(1L, "users/1/clip.mp4")).isInstanceOf(ApiException.class);
     }
 
     @Test

@@ -3,6 +3,8 @@ package com.project.Xclone_backend.post;
 import java.time.Instant;
 import java.util.List;
 
+import com.project.Xclone_backend.poll.PollDtos.CreatePollRequest;
+import com.project.Xclone_backend.poll.PollDtos.PollResponse;
 import com.project.Xclone_backend.user.UserDtos.UserSummary;
 
 import jakarta.validation.Valid;
@@ -24,7 +26,9 @@ public final class PostDtos {
             Long replyToId,
             Long quotedPostId,
             /** Top-level posts only; defaults to EVERYONE. */
-            ReplyPolicy replyPolicy) {
+            ReplyPolicy replyPolicy,
+            /** Top-level posts only, without images or a quote: 2 to 4 options. */
+            @Valid CreatePollRequest poll) {
     }
 
     public record UpdatePostRequest(@NotBlank @Size(max = Post.MAX_LENGTH) String content) {
@@ -50,6 +54,6 @@ public final class PostDtos {
             Long replyToId, int likeCount, int replyCount, boolean likedByMe, Instant createdAt,
             int repostCount, boolean repostedByMe, UserSummary repostedBy,
             PostResponse quotedPost, List<UserSummary> mentions,
-            Long conversationId, ReplyPolicy replyPolicy, boolean canReply, boolean bookmarkedByMe) {
+            Long conversationId, ReplyPolicy replyPolicy, boolean canReply, boolean bookmarkedByMe, PollResponse poll) {
     }
 }

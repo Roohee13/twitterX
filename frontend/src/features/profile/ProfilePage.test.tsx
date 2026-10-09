@@ -102,6 +102,18 @@ describe('profile header', () => {
     expect(screen.queryByRole('button', { name: 'Profile actions' })).not.toBeInTheDocument()
   })
 
+  it('offers the Message button only when the server says you can message them', async () => {
+    serve({ canMessage: true })
+    const first = open()
+    expect(await screen.findByRole('button', { name: 'Message Bob Builder' })).toBeInTheDocument()
+    first.unmount()
+
+    serve({ canMessage: false })
+    open()
+    expect(await screen.findByRole('heading', { name: 'Bob Builder', level: 2 })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Message Bob Builder' })).not.toBeInTheDocument()
+  })
+
   it('says when the account does not exist', async () => {
     server.use(http.get(`${BASE}/api/users/ghost`, () => HttpResponse.json({ status: 404, detail: 'User not found' }, { status: 404 })))
     open('ghost')

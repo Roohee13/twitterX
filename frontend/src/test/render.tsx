@@ -23,6 +23,7 @@ export const me = {
   createdAt: '2026-01-01T00:00:00Z',
   protectedAccount: false,
   admin: false,
+  dmPolicy: 'EVERYONE',
 }
 
 export function authResponse(overrides: Partial<typeof me> = {}) {

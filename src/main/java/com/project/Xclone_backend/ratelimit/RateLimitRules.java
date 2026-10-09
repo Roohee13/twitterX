@@ -19,6 +19,10 @@ public final class RateLimitRules {
     private static final Set<String> POST = Set.of("POST");
     private static final Set<String> WRITES = Set.of("POST", "PUT", "PATCH", "DELETE");
 
+    /** Shared by the REST endpoint and the WebSocket destination, so both draw from one allowance. */
+    public static final RateLimitRule MESSAGE_SEND = new RateLimitRule("message-send", POST, "/api/conversations/*/messages",
+            Scope.USER, 60, Duration.ofMinutes(1));
+
     private static final List<RateLimitRule> RULES = List.of(
             // Unauthenticated endpoints: counted per client IP to slow brute force and signup/email spam.
             new RateLimitRule("auth-login", POST, "/api/auth/login", Scope.IP, 10, Duration.ofMinutes(1)),
@@ -29,7 +33,7 @@ public final class RateLimitRules {
             // Signed-in users: counted per account.
             new RateLimitRule("post-create", POST, "/api/posts", Scope.USER, 100, Duration.ofHours(1)),
             new RateLimitRule("thread-create", POST, "/api/posts/thread", Scope.USER, 20, Duration.ofHours(1)),
-            new RateLimitRule("message-send", POST, "/api/conversations/*/messages", Scope.USER, 60, Duration.ofMinutes(1)),
+            MESSAGE_SEND,
             new RateLimitRule("media-upload", POST, "/api/media/upload-url", Scope.USER, 30, Duration.ofMinutes(1)),
             new RateLimitRule("follow", POST, "/api/users/*/follow", Scope.USER, 100, Duration.ofHours(1)),
             new RateLimitRule("report-user", POST, "/api/users/*/report", Scope.USER, 20, Duration.ofHours(1)),
@@ -39,6 +43,11 @@ public final class RateLimitRules {
     private static final AntPathMatcher MATCHER = new AntPathMatcher();
 
     private RateLimitRules() {
+    }
+
+    /** The Redis key counting {@code subject} (such as {@code u:5} or {@code ip:1.2.3.4}) against the rule. */
+    public static String key(RateLimitRule rule, String subject) {
+        return "rl:" + rule.name() + ":" + subject;
     }
 
     public static Optional<RateLimitRule> match(String method, String path) {

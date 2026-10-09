@@ -64,6 +64,16 @@ public class User {
     @Column(nullable = false)
     private boolean protectedAccount;
 
+    /** Access tokens carry the value they were issued with; bumping it (password change or reset) invalidates all of them. */
+    @ColumnDefault("0")
+    @Column(nullable = false)
+    private int tokenVersion;
+
+    @Enumerated(EnumType.STRING)
+    @ColumnDefault("'EVERYONE'")
+    @Column(nullable = false, length = 20)
+    private DmPolicy dmPolicy = DmPolicy.EVERYONE;
+
     @ColumnDefault("false")
     @Column(name = "is_admin", nullable = false)
     private boolean admin;

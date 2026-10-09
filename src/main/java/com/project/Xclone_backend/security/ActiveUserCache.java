@@ -10,14 +10,13 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-import com.project.Xclone_backend.user.AccountStatus;
 import com.project.Xclone_backend.user.UserRepository;
 
 /**
  * Remembers for a few seconds that an account is ACTIVE, so authenticating a request does not cost a database round
  * trip every time (on Neon each one is a network hop that also holds a pooled connection).
  *
- * <p>Only "active" is cached, so a reactivated account works immediately. Deactivating or deleting evicts the entry on
+ * <p>Only an active account (with its token version) is cached, so a reactivated account works immediately. Deactivating or deleting evicts the entry on
  * this instance right after the change commits; other instances notice within the TTL. Set the TTL to 0 to check the
  * database on every request.
  */
@@ -29,7 +28,10 @@ public class ActiveUserCache {
     private final UserRepository userRepository;
     private final long ttlNanos;
     private final LongSupplier nanoClock;
-    private final ConcurrentHashMap<Long, Long> activeUntil = new ConcurrentHashMap<>();
+    private record Entry(int tokenVersion, long until) {
+    }
+
+    private final ConcurrentHashMap<Long, Entry> cached = new ConcurrentHashMap<>();
 
     @Autowired
     public ActiveUserCache(UserRepository userRepository,
@@ -43,29 +45,33 @@ public class ActiveUserCache {
         this.nanoClock = nanoClock;
     }
 
-    public boolean isActive(Long userId) {
+    /**
+     * True when the account is ACTIVE and {@code tokenVersion} (from the access token) is still its current one, so a token
+     * issued before a password change is refused.
+     */
+    public boolean isCurrent(Long userId, int tokenVersion) {
         if (ttlNanos <= 0) {
-            return queryActive(userId);
+            return queryVersion(userId) == tokenVersion;
         }
-        Long until = activeUntil.get(userId);
         long now = nanoClock.getAsLong();
-        if (until != null && until - now > 0) {
-            return true;
+        Entry entry = cached.get(userId);
+        if (entry != null && entry.until() - now > 0) {
+            return entry.tokenVersion() == tokenVersion;
         }
-        boolean active = queryActive(userId);
-        if (active) {
-            if (activeUntil.size() >= MAX_ENTRIES) {
-                activeUntil.clear();
+        int current = queryVersion(userId);
+        if (current >= 0) {
+            if (cached.size() >= MAX_ENTRIES) {
+                cached.clear();
             }
-            activeUntil.put(userId, now + ttlNanos);
+            cached.put(userId, new Entry(current, now + ttlNanos));
         } else {
-            activeUntil.remove(userId);
+            cached.remove(userId);
         }
-        return active;
+        return current == tokenVersion;
     }
 
     public void evict(Long userId) {
-        activeUntil.remove(userId);
+        cached.remove(userId);
     }
 
     /** Evicts once the surrounding transaction commits (immediately when there is none), so a concurrent request cannot re-cache the old status. */
@@ -82,7 +88,8 @@ public class ActiveUserCache {
         }
     }
 
-    private boolean queryActive(Long userId) {
-        return userRepository.existsByIdAndStatus(userId, AccountStatus.ACTIVE);
+    /** The account's token version, or -1 when it is not active (never equal to a real version). */
+    private int queryVersion(Long userId) {
+        return userRepository.findActiveTokenVersion(userId).orElse(-1);
     }
 }

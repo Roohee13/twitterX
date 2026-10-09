@@ -15,7 +15,7 @@ public final class UserDtos {
     /** Full user, returned for the current user and on auth. */
     public record UserResponse(Long id, String username, String email, boolean emailVerified, String displayName,
             String bio, String avatarUrl, String bannerUrl, Instant createdAt, boolean protectedAccount,
-            boolean admin) {
+            boolean admin, DmPolicy dmPolicy) {
     }
 
     /**
@@ -30,11 +30,11 @@ public final class UserDtos {
     public record SuggestionResponse(UserSummary user, long mutualFollowCount) {
     }
 
-    /** {@code unavailable}: a deactivated account. Everything else is then empty (and {@code createdAt} null): only the name "XClone user" is shown. */
+    /** {@code canMessage}: the viewer may start or continue a chat with this account right now. {@code unavailable}: a deactivated account. Everything else is then empty (and {@code createdAt} null): only the name "XClone user" is shown. */
     public record ProfileResponse(Long id, String username, String displayName, String bio, String avatarUrl,
             String bannerUrl, Instant createdAt, long followerCount, long followingCount, boolean followedByMe,
             boolean blockedByMe, boolean mutedByMe, boolean protectedAccount, boolean followRequestedByMe,
-            boolean unavailable) {
+            boolean unavailable, boolean canMessage) {
     }
 
     /** Null fields are left unchanged. An empty string clears bio/avatar/banner. Turning protection off approves pending follow requests. */
@@ -43,7 +43,8 @@ public final class UserDtos {
             @Size(max = 160) String bio,
             @Pattern(regexp = "^$|^users/.+", message = "must be an uploaded media key") String avatarKey,
             @Pattern(regexp = "^$|^users/.+", message = "must be an uploaded media key") String bannerKey,
-            Boolean protectedAccount) {
+            Boolean protectedAccount,
+            DmPolicy dmPolicy) {
     }
 
     public record ChangeUsernameRequest(

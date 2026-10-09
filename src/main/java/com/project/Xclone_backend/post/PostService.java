@@ -11,6 +11,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.BiFunction;
+import java.util.function.BiPredicate;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Limit;
@@ -28,7 +31,11 @@ import com.project.Xclone_backend.like.LikeRepository;
 import com.project.Xclone_backend.like.PostLike;
 import com.project.Xclone_backend.media.MediaService;
 import com.project.Xclone_backend.mention.MentionService;
+import com.project.Xclone_backend.mutedword.MutedWordFilter;
+import com.project.Xclone_backend.mutedword.MutedWordService;
 import com.project.Xclone_backend.notification.NotificationService;
+import com.project.Xclone_backend.poll.PollDtos.PollResponse;
+import com.project.Xclone_backend.poll.PollService;
 import com.project.Xclone_backend.notification.NotificationType;
 import com.project.Xclone_backend.post.PostDtos.CreatePostRequest;
 import com.project.Xclone_backend.post.PostDtos.CreateThreadRequest;
@@ -65,15 +72,20 @@ public class PostService {
     private final MentionService mentionService;
     private final NotificationService notificationService;
     private final FollowRepository followRepository;
+    private final MutedWordService mutedWordService;
+    private final PollService pollService;
 
     @Transactional
     public PostResponse create(Long authorId, CreatePostRequest req) {
         String content = req.content() == null ? "" : req.content().strip();
         List<String> mediaKeys = req.mediaKeys() == null ? List.of() : List.copyOf(new LinkedHashSet<>(req.mediaKeys()));
-        if (content.isEmpty() && mediaKeys.isEmpty()) {
-            throw ApiException.badRequest("A post needs text or at least one image");
+        if (content.isEmpty() && mediaKeys.isEmpty() && req.poll() == null) {
+            throw ApiException.badRequest("A post needs text, an image or a poll");
         }
-        mediaKeys.forEach(key -> mediaService.verifyOwnedUpload(authorId, key));
+        if (req.poll() != null && (!mediaKeys.isEmpty() || req.replyToId() != null || req.quotedPostId() != null)) {
+            throw ApiException.badRequest("A poll can only be added to a new post, without images and not as a reply or a quote");
+        }
+        mediaService.verifyOwnedAttachments(authorId, mediaKeys);
 
         Post post = new Post();
         User author = userService.requireById(authorId);
@@ -110,6 +122,9 @@ public class PostService {
             postRepository.addToReplyCount(parent.getId(), 1);
         }
         postRepository.save(post);
+        if (req.poll() != null) {
+            pollService.create(post.getId(), req.poll());
+        }
         if (parent != null) {
             notificationService.notify(parent.getAuthor(), author, NotificationType.REPLY, post);
         }
@@ -127,11 +142,11 @@ public class PostService {
         List<PostResponse> created = new ArrayList<>();
         Long previousId = null;
         for (CreatePostRequest item : req.posts()) {
-            if (item.replyToId() != null || item.quotedPostId() != null || item.replyPolicy() != null) {
-                throw ApiException.badRequest("Thread posts cannot set replyToId, quotedPostId or replyPolicy");
+            if (item.replyToId() != null || item.quotedPostId() != null || item.replyPolicy() != null || item.poll() != null) {
+                throw ApiException.badRequest("Thread posts cannot set replyToId, quotedPostId, replyPolicy or poll");
             }
             CreatePostRequest linked = new CreatePostRequest(item.content(), item.mediaKeys(), previousId, null,
-                    previousId == null ? req.replyPolicy() : null);
+                    previousId == null ? req.replyPolicy() : null, null);
             PostResponse response = create(authorId, linked);
             created.add(response);
             previousId = response.id();
@@ -283,6 +298,14 @@ public class PostService {
         }
     }
 
+    /** Votes in the post's poll. Needs the same access as reading the post, and no block between voter and author. */
+    @Transactional
+    public PollResponse votePoll(Long postId, Long userId, Long optionId) {
+        Post post = requireLiveVisible(postId, userId);
+        userService.requireNotBlocked(userId, post.getAuthor().getId());
+        return pollService.vote(postId, userId, optionId);
+    }
+
     @Transactional
     public void bookmark(Long postId, Long userId) {
         requireLiveVisible(postId, userId);
@@ -367,9 +390,10 @@ public class PostService {
     @Transactional(readOnly = true)
     public CursorPage<PostResponse> hashtagPosts(String name, Long viewerId, Long cursor, Integer limit) {
         int n = CursorPage.clampLimit(limit);
-        List<Post> rows = postRepository.findByHashtag(HashtagService.normalize(name), viewerId, CursorPage.cursorOrMax(cursor),
-                Limit.of(n + 1));
-        return CursorPage.of(rows, n, Post::getId, page -> postMapper.toResponses(page, viewerId));
+        String tag = HashtagService.normalize(name);
+        return pageHidingMutedWords(viewerId, n, cursor,
+                (from, size) -> postRepository.findByHashtag(tag, viewerId, from, Limit.of(size)),
+                Post::getId, (p, muted) -> hides(muted, p, viewerId), page -> postMapper.toResponses(page, viewerId));
     }
 
     @Transactional(readOnly = true)
@@ -383,36 +407,83 @@ public class PostService {
         }
         String escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
         int n = CursorPage.clampLimit(limit);
-        List<Post> rows = postRepository.searchByContent("%" + escaped + "%", viewerId,
-                CursorPage.cursorOrMax(cursor), Limit.of(n + 1));
-        return CursorPage.of(rows, n, Post::getId, page -> postMapper.toResponses(page, viewerId));
+        return pageHidingMutedWords(viewerId, n, cursor,
+                (from, size) -> postRepository.searchByContent("%" + escaped + "%", viewerId, from, Limit.of(size)),
+                Post::getId, (p, muted) -> hides(muted, p, viewerId), page -> postMapper.toResponses(page, viewerId));
     }
 
     @Transactional(readOnly = true)
     public CursorPage<PostResponse> timeline(Long userId, Long cursor, Integer limit) {
         int n = CursorPage.clampLimit(limit);
-        List<Object[]> rows = postRepository.findTimelineWithViewerFlags(userId, CursorPage.cursorOrMax(cursor),
-                Limit.of(n + 1));
-        List<Post> posts = new ArrayList<>(rows.size());
-        Set<Long> liked = new HashSet<>();
-        Set<Long> reposted = new HashSet<>();
-        Set<Long> bookmarked = new HashSet<>();
-        for (Object[] row : rows) {
-            Post post = (Post) row[0];
-            Long shownId = post.getRepostOf() != null ? post.getRepostOf().getId() : post.getId();
-            if (Boolean.TRUE.equals(row[1])) {
-                liked.add(shownId);
-            }
-            if (Boolean.TRUE.equals(row[2])) {
-                reposted.add(shownId);
-            }
-            if (Boolean.TRUE.equals(row[3])) {
-                bookmarked.add(shownId);
-            }
-            posts.add(post);
+        return pageHidingMutedWords(userId, n, cursor,
+                (from, size) -> postRepository.findTimelineWithViewerFlags(userId, from, Limit.of(size)),
+                row -> ((Post) row[0]).getId(), (row, muted) -> hides(muted, (Post) row[0], userId),
+                page -> {
+                    List<Post> posts = new ArrayList<>(page.size());
+                    Set<Long> liked = new HashSet<>();
+                    Set<Long> reposted = new HashSet<>();
+                    Set<Long> bookmarked = new HashSet<>();
+                    for (Object[] row : page) {
+                        Post post = (Post) row[0];
+                        Long shownId = post.getRepostOf() != null ? post.getRepostOf().getId() : post.getId();
+                        if (Boolean.TRUE.equals(row[1])) {
+                            liked.add(shownId);
+                        }
+                        if (Boolean.TRUE.equals(row[2])) {
+                            reposted.add(shownId);
+                        }
+                        if (Boolean.TRUE.equals(row[3])) {
+                            bookmarked.add(shownId);
+                        }
+                        posts.add(post);
+                    }
+                    return postMapper.toResponses(posts, userId, new PostMapper.ViewerFlags(liked, reposted, bookmarked));
+                });
+    }
+
+    /** How many fetches a single request may spend looking for posts that are not hidden by the viewer's muted words. */
+    private static final int MUTED_WORD_SCAN_ROUNDS = 5;
+
+    /**
+     * A page of an id-ordered (newest first) feed without the posts the viewer's muted words hide. A page must not come back short just because
+     * its rows were hidden, so more rows are fetched until it is full. If the scan budget runs out first the page is returned as it is, with a
+     * cursor that continues from where the scan stopped. Without muted words this is exactly one fetch.
+     */
+    private <T> CursorPage<PostResponse> pageHidingMutedWords(Long viewerId, int n, Long cursor,
+            BiFunction<Long, Integer, List<T>> fetch, Function<T, Long> idOf, BiPredicate<T, MutedWordFilter> hidden,
+            Function<List<T>, List<PostResponse>> mapper) {
+        long position = CursorPage.cursorOrMax(cursor);
+        MutedWordFilter muted = mutedWordService.filterFor(viewerId);
+        if (muted.isEmpty()) {
+            return CursorPage.of(fetch.apply(position, n + 1), n, idOf, mapper);
         }
-        PostMapper.ViewerFlags flags = new PostMapper.ViewerFlags(liked, reposted, bookmarked);
-        return CursorPage.of(posts, n, Post::getId, page -> postMapper.toResponses(page, userId, flags));
+        List<T> kept = new ArrayList<>();
+        boolean exhausted = false;
+        for (int round = 0; round < MUTED_WORD_SCAN_ROUNDS && kept.size() <= n && !exhausted; round++) {
+            List<T> rows = fetch.apply(position, n + 1);
+            exhausted = rows.size() < n + 1;
+            if (!rows.isEmpty()) {
+                position = idOf.apply(rows.get(rows.size() - 1));
+            }
+            for (T row : rows) {
+                if (!hidden.test(row, muted)) {
+                    kept.add(row);
+                }
+            }
+        }
+        if (kept.size() > n) {
+            return CursorPage.of(kept, n, idOf, mapper);
+        }
+        return new CursorPage<>(mapper.apply(kept), exhausted ? null : position);
+    }
+
+    /** Whether the viewer's muted words hide the post (its text, a repost's original, a quoted post). People's own posts are never hidden from them. */
+    private static boolean hides(MutedWordFilter muted, Post post, Long viewerId) {
+        Post shown = post.getRepostOf() != null ? post.getRepostOf() : post;
+        if (shown.getAuthor().getId().equals(viewerId)) {
+            return false;
+        }
+        return muted.hides(shown.getContent()) || (shown.getQuoteOf() != null && muted.hides(shown.getQuoteOf().getContent()));
     }
 
     // --- For You ---
@@ -453,6 +524,10 @@ public class PostService {
             return new CursorPage<>(List.of(), null);
         }
         Instant scoredAt = Instant.ofEpochSecond((snapshot + 1) * 60); // the end of that minute, so posts made this minute are in
+        MutedWordFilter muted = mutedWordService.filterFor(userId);
+        if (!muted.isEmpty()) {
+            return forYouHidingMutedWords(userId, muted, snapshot, offset, pageSize, scoredAt);
+        }
         List<Long> ids = postRepository.findForYouIds(userId, scoredAt, scoredAt.minus(FOR_YOU_WINDOW), FOR_YOU_CANDIDATES,
                 FOR_YOU_PER_AUTHOR, offset, pageSize + 1);
         boolean more = ids.size() > pageSize && offset + pageSize < FOR_YOU_MAX_DEPTH;
@@ -462,6 +537,43 @@ public class PostService {
         List<Post> posts = pageIds.stream().map(byId::get).filter(Objects::nonNull).toList();
         Long next = more ? snapshot * 1000 + offset + pageSize : null;
         return new CursorPage<>(postMapper.toResponses(posts, userId), next);
+    }
+
+    /**
+     * "For you" when the viewer has muted words: walks the ranked list in order, skipping hidden posts, until the page is full. The cursor then
+     * points just past the last ranked post that was looked at, so skipped posts never come back on a later page.
+     */
+    private CursorPage<PostResponse> forYouHidingMutedWords(Long userId, MutedWordFilter muted, long snapshot, int offset, int pageSize,
+            Instant scoredAt) {
+        List<Post> kept = new ArrayList<>();
+        int position = offset;
+        boolean more = false;
+        for (int round = 0; round < MUTED_WORD_SCAN_ROUNDS && !more && position < FOR_YOU_MAX_DEPTH; round++) {
+            int window = Math.min(pageSize + 1, FOR_YOU_MAX_DEPTH - position);
+            List<Long> ids = postRepository.findForYouIds(userId, scoredAt, scoredAt.minus(FOR_YOU_WINDOW), FOR_YOU_CANDIDATES,
+                    FOR_YOU_PER_AUTHOR, position, window);
+            Map<Long, Post> byId = new HashMap<>();
+            postRepository.findAllWithAuthor(ids).forEach(p -> byId.put(p.getId(), p));
+            for (Long id : ids) {
+                if (kept.size() == pageSize) {
+                    more = true; // this one is for the next page
+                    break;
+                }
+                position++;
+                Post post = byId.get(id);
+                if (post != null && !hides(muted, post, userId)) {
+                    kept.add(post);
+                }
+            }
+            if (ids.size() < window) {
+                break; // the ranked list is exhausted
+            }
+            more = more || (kept.size() == pageSize && position < FOR_YOU_MAX_DEPTH);
+        }
+        boolean exhaustedBudget = !more && position < FOR_YOU_MAX_DEPTH && kept.size() < pageSize;
+        // Scan budget spent without filling the page: hand back what there is and let the client continue from here.
+        Long next = (more || exhaustedBudget) && position < FOR_YOU_MAX_DEPTH ? snapshot * 1000 + position : null;
+        return new CursorPage<>(postMapper.toResponses(kept, userId), next);
     }
 
     /** The author of the conversation can always reply; everyone else must satisfy the root post's policy. */

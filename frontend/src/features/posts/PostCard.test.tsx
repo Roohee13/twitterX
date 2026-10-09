@@ -23,6 +23,17 @@ async function show(post: PostResponse) {
   return view
 }
 
+describe('PostCard video', () => {
+  it('plays a video with controls instead of showing an image', async () => {
+    await show(makePost({ mediaUrls: ['https://media.test/users/1/clip.mp4'] }))
+    const video = screen.getByLabelText('Video attached to the post')
+    expect(video.tagName).toBe('VIDEO')
+    expect(video).toHaveAttribute('src', 'https://media.test/users/1/clip.mp4')
+    expect(video).toHaveAttribute('controls')
+    expect(screen.queryByAltText('Image attached to the post')).not.toBeInTheDocument()
+  })
+})
+
 describe('PostCard', () => {
   it('shows who posted, their handle, how long ago, and the text', async () => {
     await show(makePost({ content: 'hello world', author: makeUser({ displayName: 'Ada Lovelace', username: 'ada' }) }))

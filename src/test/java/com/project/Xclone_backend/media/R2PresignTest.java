@@ -16,7 +16,7 @@ import com.project.Xclone_backend.config.R2Properties;
 class R2PresignTest {
 
     private final R2Properties props = new R2Properties("0123456789abcdef0123456789abcdef", "AKIAEXAMPLEEXAMPLE", "secretsecretsecretsecretsecretsecret",
-            "xclone-media", "https://pub-example.r2.dev", Duration.ofMinutes(10), 5_242_880, "");
+            "xclone-media", "https://pub-example.r2.dev", Duration.ofMinutes(10), 5_242_880, 52_428_800, "");
 
     private MediaService service() throws Exception {
         var config = new com.project.Xclone_backend.config.R2Config();

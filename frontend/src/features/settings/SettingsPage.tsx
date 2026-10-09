@@ -4,6 +4,7 @@ import { AdminEmailTool } from './AdminEmailTool'
 import { AdminStorageTool } from './AdminStorageTool'
 import { AppearanceSection } from './AppearanceSection'
 import { DangerZone } from './DangerZone'
+import { MutedWordsSection } from './MutedWordsSection'
 import { PrivacySection } from './PrivacySection'
 import { RelationList } from './RelationLists'
 
@@ -19,6 +20,7 @@ export function SettingsPage() {
       <PrivacySection />
       <RelationList kind="block" />
       <RelationList kind="mute" />
+      <MutedWordsSection />
       <AdminEmailTool />
       <AdminStorageTool />
       <DangerZone />

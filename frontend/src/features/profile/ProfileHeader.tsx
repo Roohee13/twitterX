@@ -37,7 +37,7 @@ export function ProfileHeader({ profile, onEdit }: { profile: ProfileResponse; o
             ) : (
               <>
                 <ProfileMenu profile={profile} />
-                {!profile.blockedByMe && (
+                {!profile.blockedByMe && profile.canMessage && (
                   <button
                     type="button"
                     aria-label={`Message ${profile.displayName}`}

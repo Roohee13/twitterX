@@ -6,6 +6,7 @@ import { PostActionBar } from './PostActionBar'
 import { PostHeader } from './PostHeader'
 import { PostMenu } from './PostMenu'
 import { PostMedia } from './PostMedia'
+import { PostPoll } from './PostPoll'
 import { PostText } from './PostText'
 
 export function QuotedPost({ post }: { post: PostResponse }) {
@@ -64,6 +65,7 @@ export function PostCard({ post }: { post: PostResponse }) {
           </div>
           <PostText content={post.content} mentions={post.mentions} className="text-[15px]" />
           <PostMedia urls={post.mediaUrls} />
+          <PostPoll post={post} />
           {post.quotedPost && <QuotedPost post={post.quotedPost} />}
           <PostActionBar post={post} />
         </div>

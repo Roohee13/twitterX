@@ -12,6 +12,7 @@ app:
     popular-cache-ttl: 0s # tests create the data the ranking depends on
   security:
     active-user-cache-ttl: 0s # tests change account status directly in the database
+    require-verified-email: false # tests register throwaway accounts and use them at once; EmailVerificationTest turns it on
   websocket:
     redis-relay: false # relay behavior has its own tests
   rate-limit:

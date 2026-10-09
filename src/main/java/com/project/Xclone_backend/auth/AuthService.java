@@ -8,6 +8,7 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.HexFormat;
 import java.util.Locale;
+import java.util.Optional;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -18,6 +19,8 @@ import com.project.Xclone_backend.auth.AuthDtos.LoginRequest;
 import com.project.Xclone_backend.auth.AuthDtos.RegisterRequest;
 import com.project.Xclone_backend.common.ApiException;
 import com.project.Xclone_backend.config.JwtProperties;
+import com.project.Xclone_backend.ratelimit.LoginAttemptLimiter;
+import com.project.Xclone_backend.security.ActiveUserCache;
 import com.project.Xclone_backend.security.JwtService;
 import com.project.Xclone_backend.user.AccountStatus;
 import com.project.Xclone_backend.user.User;
@@ -39,6 +42,11 @@ public class AuthService {
     private final JwtProperties jwtProperties;
     private final UserMapper userMapper;
     private final EmailTokenService emailTokenService;
+    private final ActiveUserCache activeUserCache;
+    private final LoginAttemptLimiter loginAttempts;
+
+    /** Checked when no account matches, so a wrong name takes as long as a wrong password and response time does not reveal which accounts exist. */
+    private volatile String dummyHash;
 
     @Transactional
     public AuthResponse register(RegisterRequest req) {
@@ -82,15 +90,24 @@ public class AuthService {
             throw ApiException.badRequest("Invalid or expired token");
         }
         user.setPasswordHash(passwordEncoder.encode(newPassword));
+        user.setTokenVersion(user.getTokenVersion() + 1); // access tokens issued before the reset stop working now, not when they expire
         refreshTokenRepository.revokeAllForUser(user.getId());
+        activeUserCache.evictAfterCommit(user.getId());
     }
 
     @Transactional
     public AuthResponse login(LoginRequest req) {
         String id = req.usernameOrEmail().strip().toLowerCase(Locale.ROOT);
-        User user = (id.contains("@") ? userRepository.findByEmail(id) : userRepository.findByUsername(id))
-                .filter(u -> passwordEncoder.matches(req.password(), u.getPasswordHash()))
-                .orElseThrow(() -> ApiException.unauthorized("Invalid credentials"));
+        loginAttempts.requireNotLocked(id);
+        Optional<User> found = id.contains("@") ? userRepository.findByEmail(id) : userRepository.findByUsername(id);
+        boolean passwordMatches = passwordEncoder.matches(req.password(),
+                found.map(User::getPasswordHash).orElseGet(this::dummyHash));
+        if (found.isEmpty() || !passwordMatches) {
+            loginAttempts.recordFailure(id);
+            throw ApiException.unauthorized("Invalid credentials");
+        }
+        User user = found.get();
+        loginAttempts.reset(id);
         // Checked only after the password matches, so a wrong password never changes or reveals the status.
         if (user.getStatus() == AccountStatus.DEACTIVATED) {
             user.setStatus(AccountStatus.ACTIVE);
@@ -100,6 +117,15 @@ public class AuthService {
             throw ApiException.unauthorized("Invalid credentials");
         }
         return issueTokens(user);
+    }
+
+    private String dummyHash() {
+        String hash = dummyHash;
+        if (hash == null) {
+            hash = passwordEncoder.encode(java.util.UUID.randomUUID().toString());
+            dummyHash = hash;
+        }
+        return hash;
     }
 
     /** Rotates the refresh token: the presented token is revoked and a new pair is issued. */
@@ -138,7 +164,7 @@ public class AuthService {
         token.setExpiresAt(Instant.now().plus(jwtProperties.refreshTtl()));
         refreshTokenRepository.save(token);
 
-        String access = jwtService.createAccessToken(user.getId(), user.getUsername());
+        String access = jwtService.createAccessToken(user.getId(), user.getUsername(), user.getTokenVersion());
         return new AuthResponse(access, raw, jwtService.accessTtlSeconds(), userMapper.toResponse(user));
     }
 

@@ -116,6 +116,28 @@ class WebSocketMessagingTest {
         assertEquals(0, messageCount(conv));
     }
 
+    @Test
+    void clientCannotSendFramesToAnotherUsersQueue() throws Exception {
+        Account alice = newUser();
+        Account bob = newUser();
+        Connection a = connect(alice.token());
+        Connection b = connect(bob.token());
+        BlockingQueue<Map<String, Object>> bobNotifications = b.subscribe("/user/queue/notifications", userRegistry, bob.id());
+        BlockingQueue<Map<String, Object>> bobMessages = b.subscribe("/user/queue/messages", userRegistry, bob.id());
+        a.connected.get(5, TimeUnit.SECONDS);
+
+        // Only /app/** is a client-writable destination; anything else must be refused, not routed to the victim.
+        a.session.send("/user/" + bob.id() + "/queue/notifications", Map.of("type", "FOLLOW", "detail", "forged"));
+        assertNone(bobNotifications);
+        assertNotNull(a.errored.get(5, TimeUnit.SECONDS));
+
+        Connection a2 = connect(alice.token());
+        a2.connected.get(5, TimeUnit.SECONDS);
+        a2.session.send("/queue/messages", Map.of("content", "forged"));
+        assertNone(bobMessages);
+        assertNotNull(a2.errored.get(5, TimeUnit.SECONDS));
+    }
+
     // --- sending, persistence, delivery ---
 
     @Test
@@ -365,7 +387,7 @@ class WebSocketMessagingTest {
         user.setPasswordHash("not-used");
         user.setDisplayName("Test User");
         userRepository.save(user);
-        return new Account(user.getId(), username, jwtService.createAccessToken(user.getId(), username));
+        return new Account(user.getId(), username, jwtService.createAccessToken(user.getId(), username, user.getTokenVersion()));
     }
 
     private long newConversation(Account a, Account b) {

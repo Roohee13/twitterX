@@ -27,6 +27,7 @@ export function makePost(overrides: Partial<PostResponse> = {}): PostResponse {
     replyPolicy: 'EVERYONE',
     canReply: true,
     bookmarkedByMe: false,
+    poll: null,
     ...overrides,
   }
 }
@@ -47,6 +48,7 @@ export function makeProfile(overrides: Partial<ProfileResponse> = {}): ProfileRe
     mutedByMe: false,
     protectedAccount: false,
     followRequestedByMe: false,
+    canMessage: true,
     ...overrides,
   }
 }

@@ -17,6 +17,8 @@ import com.project.Xclone_backend.follow.FollowRepository;
 import com.project.Xclone_backend.like.LikeRepository;
 import com.project.Xclone_backend.post.PostDtos.PostResponse;
 import com.project.Xclone_backend.user.UserDtos.UserSummary;
+import com.project.Xclone_backend.poll.PollDtos.PollResponse;
+import com.project.Xclone_backend.poll.PollService;
 import com.project.Xclone_backend.user.User;
 import com.project.Xclone_backend.user.UserMapper;
 
@@ -32,6 +34,7 @@ public class PostMapper {
     private final PostRepository postRepository;
     private final FollowRepository followRepository;
     private final R2Properties r2;
+    private final PollService pollService;
 
     /** Which of the posts being shown the viewer has liked, reposted or bookmarked, when the caller already knows. */
     public record ViewerFlags(Set<Long> liked, Set<Long> reposted, Set<Long> bookmarked) {
@@ -51,7 +54,8 @@ public class PostMapper {
             return toResponse(post, post.getAuthor().getId());
         }
         Post root = post.getRoot() != null ? post.getRoot() : post;
-        return map(post, false, false, false, null, null, root.getReplyPolicy(), true);
+        return map(post, false, false, false, null, null, root.getReplyPolicy(), true,
+                pollService.responses(List.of(post.getId()), post.getAuthor().getId()).get(post.getId()));
     }
 
     /**
@@ -96,15 +100,17 @@ public class PostMapper {
             }
         }
         ReplyAccess access = replyAccess(Stream.concat(targets.stream(), quoted.values().stream()).toList(), viewerId);
+        Map<Long, PollResponse> polls = pollService.responses(
+                Stream.concat(targets.stream(), quoted.values().stream()).map(Post::getId).distinct().toList(), viewerId);
         return posts.stream().map(p -> {
             Post t = target(p);
             UserSummary repostedBy = p.getRepostOf() == null ? null : userMapper.toSummary(p.getAuthor());
             Post q = t.getQuoteOf() == null ? null : quoted.get(t.getQuoteOf().getId());
             PostResponse quotedResponse = q == null ? null
                     : map(q, liked.contains(q.getId()), reposted.contains(q.getId()), bookmarked.contains(q.getId()), null,
-                            null, access);
+                            null, access, polls.get(q.getId()));
             return map(t, liked.contains(t.getId()), reposted.contains(t.getId()), bookmarked.contains(t.getId()),
-                    repostedBy, quotedResponse, access);
+                    repostedBy, quotedResponse, access, polls.get(t.getId()));
         }).toList();
     }
 
@@ -161,14 +167,14 @@ public class PostMapper {
     }
 
     private PostResponse map(Post p, boolean likedByMe, boolean repostedByMe, boolean bookmarkedByMe,
-            UserSummary repostedBy, PostResponse quotedPost, ReplyAccess access) {
+            UserSummary repostedBy, PostResponse quotedPost, ReplyAccess access, PollResponse poll) {
         Post root = access.rootOf(p);
         return map(p, likedByMe, repostedByMe, bookmarkedByMe, repostedBy, quotedPost,
-                root == null ? ReplyPolicy.EVERYONE : root.getReplyPolicy(), access.canReply(root));
+                root == null ? ReplyPolicy.EVERYONE : root.getReplyPolicy(), access.canReply(root), poll);
     }
 
     private PostResponse map(Post p, boolean likedByMe, boolean repostedByMe, boolean bookmarkedByMe,
-            UserSummary repostedBy, PostResponse quotedPost, ReplyPolicy replyPolicy, boolean canReply) {
+            UserSummary repostedBy, PostResponse quotedPost, ReplyPolicy replyPolicy, boolean canReply, PollResponse poll) {
         List<UserSummary> mentions = p.getMentions().stream()
                 .sorted(Comparator.comparing(User::getUsername)).map(userMapper::toSummary).toList();
         List<String> mediaUrls = p.getMedia().stream().map(m -> r2.publicUrl(m.getR2Key())).toList();
@@ -177,6 +183,6 @@ public class PostMapper {
                 replyToId, p.getLikeCount(), p.getReplyCount(), likedByMe, p.getCreatedAt(),
                 p.getRepostCount(), repostedByMe, repostedBy, quotedPost, mentions,
                 p.getRoot() == null ? p.getId() : p.getRoot().getId(),
-                replyPolicy, canReply, bookmarkedByMe);
+                replyPolicy, canReply, bookmarkedByMe, poll);
     }
 }
