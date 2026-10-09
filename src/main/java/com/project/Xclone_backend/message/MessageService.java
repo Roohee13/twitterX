@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.project.Xclone_backend.common.CursorPage;
 import com.project.Xclone_backend.conversation.Conversation;
+import com.project.Xclone_backend.conversation.ConversationMemberRepository;
 import com.project.Xclone_backend.conversation.ConversationRepository;
 import com.project.Xclone_backend.conversation.ConversationService;
 import com.project.Xclone_backend.config.R2Properties;
@@ -31,6 +32,7 @@ public class MessageService {
 
     private final MessageRepository messageRepository;
     private final ConversationRepository conversationRepository;
+    private final ConversationMemberRepository memberRepository;
     private final ConversationService conversationService;
     private final UserService userService;
     private final UserMapper userMapper;
@@ -58,9 +60,9 @@ public class MessageService {
         messageRepository.save(message);
         conversationRepository.touch(conversationId, Instant.now());
         MessageResponse response = toResponse(message);
-        Long recipientId = conversation.getUserOne().getId().equals(meId)
-                ? conversation.getUserTwo().getId() : conversation.getUserOne().getId();
-        events.publishEvent(new MessageSentEvent(recipientId, response));
+        // One event per person, so a group message reaches every member the way a direct one reaches the other person.
+        conversationService.otherParticipantIds(conversation, meId)
+                .forEach(recipientId -> events.publishEvent(new MessageSentEvent(recipientId, response)));
         return response;
     }
 
@@ -70,7 +72,8 @@ public class MessageService {
      */
     @Transactional(readOnly = true)
     public CursorPage<MessageResponse> list(Long meId, Long conversationId, Long cursor, Integer limit) {
-        long clearedBefore = conversationService.requireReadable(meId, conversationId).clearedBeforeFor(meId);
+        Conversation conversation = conversationService.requireReadable(meId, conversationId);
+        long clearedBefore = conversationService.clearedBeforeFor(conversation, meId);
         int size = CursorPage.clampLimit(limit);
         List<Message> rows = messageRepository.findPage(conversationId, CursorPage.cursorOrMax(cursor), clearedBefore,
                 Limit.of(size + 1));
@@ -116,7 +119,7 @@ public class MessageService {
     private Message requireOwnMessage(Long meId, Long conversationId, Long messageId) {
         Conversation conversation = conversationService.requireAccessible(meId, conversationId);
         Message message = messageRepository.findInConversation(messageId, conversationId)
-                .filter(m -> m.getId() > conversation.clearedBeforeFor(meId)) // one the person deleted with the conversation is gone for them
+                .filter(m -> m.getId() > conversationService.clearedBeforeFor(conversation, meId)) // one the person deleted with the conversation is gone for them
                 .orElseThrow(() -> ApiException.notFound("Message not found"));
         if (!message.getSender().getId().equals(meId)) {
             throw ApiException.forbidden("You can only change your own messages");
@@ -126,26 +129,31 @@ public class MessageService {
 
     /** After commit the other person's open chat is told, so the change shows without a reload. */
     private void announceChange(Long meId, Message message) {
-        Conversation c = message.getConversation();
-        Long recipientId = c.getUserOne().getId().equals(meId) ? c.getUserTwo().getId() : c.getUserOne().getId();
-        events.publishEvent(new MessageChangedEvent(recipientId, toResponse(message)));
+        MessageResponse response = toResponse(message);
+        conversationService.otherParticipantIds(message.getConversation(), meId)
+                .forEach(recipientId -> events.publishEvent(new MessageChangedEvent(recipientId, response)));
     }
 
     @Transactional(readOnly = true)
     public UnreadCountResponse unreadCount(Long meId, Long conversationId) {
-        long clearedBefore = conversationService.requireReadable(meId, conversationId).clearedBeforeFor(meId);
-        return new UnreadCountResponse(messageRepository.countUnread(conversationId, meId, clearedBefore));
+        Conversation conversation = conversationService.requireReadable(meId, conversationId);
+        return new UnreadCountResponse(conversationService.unreadCount(conversation, meId));
     }
 
     @Transactional(readOnly = true)
     public UnreadCountResponse totalUnreadCount(Long meId) {
-        return new UnreadCountResponse(messageRepository.countUnreadTotal(meId));
+        return new UnreadCountResponse(messageRepository.countUnreadTotal(meId) + messageRepository.countUnreadTotalInGroups(meId));
     }
 
-    /** Idempotent; marks the other participant's messages as read. */
+    /** Idempotent; marks the other participants' messages as read (in a group, moves the member's own read marker to the newest message). */
     @Transactional
     public void markRead(Long meId, Long conversationId) {
-        conversationService.requireReadable(meId, conversationId);
+        Conversation conversation = conversationService.requireReadable(meId, conversationId);
+        if (conversation.isGroup()) {
+            messageRepository.findFirstByConversationIdOrderByIdDesc(conversationId)
+                    .ifPresent(newest -> memberRepository.markReadUpTo(conversationId, meId, newest.getId()));
+            return;
+        }
         messageRepository.markRead(conversationId, meId, Instant.now());
     }
 

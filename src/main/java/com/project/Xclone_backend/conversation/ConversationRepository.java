@@ -27,9 +27,11 @@ public interface ConversationRepository extends JpaRepository<Conversation, Long
             """)
     Optional<Conversation> findByPair(Long userOneId, Long userTwoId);
 
+    /** A direct conversation's two people, or a group's members. The pair is fetched with left joins because a group has none. */
     @Query("""
-            select c from Conversation c join fetch c.userOne join fetch c.userTwo
-            where c.id = :id and (c.userOne.id = :userId or c.userTwo.id = :userId)
+            select c from Conversation c left join fetch c.userOne left join fetch c.userTwo
+            where c.id = :id and (c.userOne.id = :userId or c.userTwo.id = :userId
+               or exists (select 1 from ConversationMember m where m.conversation = c and m.user.id = :userId))
             """)
     Optional<Conversation> findByIdAndParticipant(Long id, Long userId);
 
@@ -44,33 +46,47 @@ public interface ConversationRepository extends JpaRepository<Conversation, Long
 
     /**
      * The inbox: conversations that have at least one message you have not deleted, most recently active first. The cursor is the id of the newest
-     * message (unique per conversation, and growing with time), so paging by it is exact. Hides pairs blocked either way and
-     * conversations with a removed account; one with a deactivated person stays (shown as "XClone user").
+     * message (unique per conversation, and growing with time), so paging by it is exact. Direct conversations hide pairs blocked either way and
+     * those with a removed account; one with a deactivated person stays (shown as "XClone user"). Groups you belong to are listed as well;
+     * their unread count is what came after your read marker (or after what you deleted, whichever is later).
      */
     @Query(value = """
-            select c.id as conversationId, lm.id as lastMessageId,
-                   (select count(*) from messages m
-                    where m.conversation_id = c.id and m.sender_id <> :userId and m.read_at is null and not m.deleted
-                      and m.id > case when c.user_one_id = :userId then c.user_one_cleared_before else c.user_two_cleared_before end) as unread
-            from conversations c
-            join users u1 on u1.id = c.user_one_id
-            join users u2 on u2.id = c.user_two_id
-            join lateral (select m.id from messages m
-                          where m.conversation_id = c.id
-                            and m.id > case when c.user_one_id = :userId then c.user_one_cleared_before else c.user_two_cleared_before end
-                          order by m.id desc limit 1) lm on true
-            where (c.user_one_id = :userId or c.user_two_id = :userId) and lm.id < :cursor
-              and u1.status <> 'DELETED' and u2.status <> 'DELETED'
-              and not exists (select 1 from blocks b
-                   where (b.blocker_id = c.user_one_id and b.blocked_id = c.user_two_id)
-                      or (b.blocker_id = c.user_two_id and b.blocked_id = c.user_one_id))
-            order by lm.id desc
+            select * from (
+                select c.id as conversationId, lm.id as lastMessageId,
+                       (select count(*) from messages m
+                        where m.conversation_id = c.id and m.sender_id <> :userId and m.read_at is null and not m.deleted
+                          and m.id > case when c.user_one_id = :userId then c.user_one_cleared_before else c.user_two_cleared_before end) as unread
+                from conversations c
+                join users u1 on u1.id = c.user_one_id
+                join users u2 on u2.id = c.user_two_id
+                join lateral (select m.id from messages m
+                              where m.conversation_id = c.id
+                                and m.id > case when c.user_one_id = :userId then c.user_one_cleared_before else c.user_two_cleared_before end
+                              order by m.id desc limit 1) lm on true
+                where (c.user_one_id = :userId or c.user_two_id = :userId) and lm.id < :cursor
+                  and u1.status <> 'DELETED' and u2.status <> 'DELETED'
+                  and not exists (select 1 from blocks b
+                       where (b.blocker_id = c.user_one_id and b.blocked_id = c.user_two_id)
+                          or (b.blocker_id = c.user_two_id and b.blocked_id = c.user_one_id))
+                union all
+                select c.id as conversationId, lm.id as lastMessageId,
+                       (select count(*) from messages m
+                        where m.conversation_id = c.id and m.sender_id <> :userId and not m.deleted
+                          and m.id > greatest(cm.cleared_before, cm.last_read_message_id)) as unread
+                from conversations c
+                join conversation_members cm on cm.conversation_id = c.id and cm.user_id = :userId
+                join lateral (select m.id from messages m
+                              where m.conversation_id = c.id and m.id > cm.cleared_before
+                              order by m.id desc limit 1) lm on true
+                where c.type = 'GROUP' and lm.id < :cursor
+            ) inbox
+            order by lastMessageId desc
             limit :limit
             """, nativeQuery = true)
     List<InboxRow> findInbox(Long userId, long cursor, int limit);
 
     @Query("""
-            select c from Conversation c join fetch c.userOne join fetch c.userTwo where c.id in :ids
+            select c from Conversation c left join fetch c.userOne left join fetch c.userTwo where c.id in :ids
             """)
     List<Conversation> findAllWithUsers(Collection<Long> ids);
 

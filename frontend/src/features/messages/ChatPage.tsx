@@ -14,6 +14,8 @@ import { useCursorQuery } from '../../lib/queries'
 import type { ConversationResponse, MessageResponse } from '../../lib/types'
 import { useCurrentUser } from '../auth/AuthContext'
 import { PageHeader } from '../shell/PageHeader'
+import { GroupAvatar } from './GroupAvatar'
+import { GroupInfoDialog } from './GroupInfoDialog'
 import { MessageBubble } from './MessageBubble'
 import { MessageItem } from './MessageItem'
 import { MessageComposer, type Outgoing } from './MessageComposer'
@@ -40,6 +42,7 @@ export function ChatPage() {
   const navigate = useNavigate()
   const toast = useToast()
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [showingInfo, setShowingInfo] = useState(false)
 
   const conversation = useQuery({
     queryKey: conversationKey(id),
@@ -120,27 +123,38 @@ export function ChatPage() {
   }
 
   const { participant } = conversation.data
+  const group = conversation.data.type === 'GROUP' || participant === null
+  const name = group ? (conversation.data.title ?? 'Group') : participant.displayName
+  const unavailable = !group && participant.unavailable === true
   return (
     <>
-      <PageHeader title={participant.displayName}>
+      <PageHeader title={name}>
         <div className="ml-auto">
           <DropdownMenu
             label="Conversation actions"
             triggerClassName="rounded-full p-2 text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"
             trigger={<MoreHorizontal size={20} />}
-            items={[{ label: 'Delete conversation', onSelect: () => setConfirmingDelete(true), danger: true }]}
+            items={[
+              ...(group ? [{ label: 'Group info', onSelect: () => setShowingInfo(true) }] : []),
+              { label: 'Delete conversation', onSelect: () => setConfirmingDelete(true), danger: true },
+            ]}
           />
         </div>
         <Link to="/messages" aria-label="Back to messages" className="order-first -ml-2 rounded-full p-2 hover:bg-zinc-900"><ArrowLeft size={20} /></Link>
-        {participant.unavailable ? (
+        {group ? (
+          <button type="button" aria-label={`${name} group info`} onClick={() => setShowingInfo(true)} className="order-first rounded-full"><GroupAvatar size="sm" /></button>
+        ) : unavailable ? (
           <span className="order-first"><Avatar src={null} name={participant.displayName} size="sm" /></span>
         ) : (
           <Link to={`/u/${participant.username}`} aria-label={`${participant.displayName}'s profile`} className="order-first"><Avatar src={participant.avatarUrl} name={participant.displayName} size="sm" /></Link>
         )}
       </PageHeader>
+      {showingInfo && <GroupInfoDialog conversation={conversation.data} onClose={() => setShowingInfo(false)} />}
       {confirmingDelete && (
         <ConfirmDialog title="Delete this conversation?" confirmLabel="Delete" danger onConfirm={deleteConversation} onClose={() => setConfirmingDelete(false)}>
-          It disappears from your messages. {participant.displayName} keeps their copy and is not told. If they write to you again, the conversation comes back with only the new messages.
+          {group
+            ? 'Its history is erased from your side and it disappears from your messages. The others keep theirs and are not told, and you stay in the group: if someone writes again, the conversation comes back with only the new messages. To stop receiving its messages, leave the group instead.'
+            : `It disappears from your messages. ${participant.displayName} keeps their copy and is not told. If they write to you again, the conversation comes back with only the new messages.`}
         </ConfirmDialog>
       )}
       <div className="flex min-h-[calc(100vh-8rem)] flex-col justify-end gap-1 px-4 py-4">
@@ -149,11 +163,11 @@ export function ChatPage() {
         )}
         {thread.isPending && <Spinner />}
         {thread.isError && <ErrorState message={thread.error.message} onRetry={() => void thread.refetch()} />}
-        {thread.data && messages.length === 0 && pending.length === 0 && <p className="py-8 text-center text-zinc-500">No messages yet. Say hello to {participant.displayName}.</p>}
+        {thread.data && messages.length === 0 && pending.length === 0 && <p className="py-8 text-center text-zinc-500">No messages yet. Say hello to {group ? 'the group' : participant.displayName}.</p>}
         {messages.map((m, i) => (
           <Fragment key={m.id}>
             {(i === 0 || day(messages[i - 1].createdAt) !== day(m.createdAt)) && <p className="my-2 text-center text-xs text-zinc-500">{dayLabel(m.createdAt)}</p>}
-            <MessageItem message={m} mine={m.sender.id === me.id} readOnly={participant.unavailable === true} />
+            <MessageItem message={m} mine={m.sender.id === me.id} readOnly={unavailable} showSender={group} />
           </Fragment>
         ))}
         {pending.map((item) => (
@@ -171,7 +185,7 @@ export function ChatPage() {
         {/* The margin keeps the newest message clear of the writing box (and, on phones, the bottom bar) that float over the page. */}
         <div ref={end} className="scroll-mb-40" />
       </div>
-      {participant.unavailable ? (
+      {unavailable ? (
         <p role="status" className="sticky bottom-16 z-10 border-t border-zinc-800 bg-black px-4 py-4 text-center text-zinc-500 sm:bottom-0">
           You can't reply to this conversation: this account is unavailable.
         </p>

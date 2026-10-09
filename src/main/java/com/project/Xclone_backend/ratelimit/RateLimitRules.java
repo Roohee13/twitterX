@@ -30,6 +30,8 @@ public final class RateLimitRules {
             new RateLimitRule("post-create", POST, "/api/posts", Scope.USER, 100, Duration.ofHours(1)),
             new RateLimitRule("thread-create", POST, "/api/posts/thread", Scope.USER, 20, Duration.ofHours(1)),
             new RateLimitRule("message-send", POST, "/api/conversations/*/messages", Scope.USER, 60, Duration.ofMinutes(1)),
+            new RateLimitRule("group-create", POST, "/api/conversations/groups", Scope.USER, 10, Duration.ofHours(1)),
+            new RateLimitRule("group-add-members", POST, "/api/conversations/*/members", Scope.USER, 30, Duration.ofHours(1)),
             new RateLimitRule("media-upload", POST, "/api/media/upload-url", Scope.USER, 30, Duration.ofMinutes(1)),
             new RateLimitRule("follow", POST, "/api/users/*/follow", Scope.USER, 100, Duration.ofHours(1)),
             new RateLimitRule("report-user", POST, "/api/users/*/report", Scope.USER, 20, Duration.ofHours(1)),

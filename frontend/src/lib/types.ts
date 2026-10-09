@@ -105,17 +105,43 @@ export interface LastMessage {
   deleted: boolean
   /** It carries photos (its text may be empty). */
   hasMedia?: boolean
+  /** The sender's display name; set for groups, where the inbox shows who said it. */
+  senderName?: string | null
 }
+
+export type ConversationType = 'DIRECT' | 'GROUP'
 
 export interface ConversationResponse {
   id: number
-  participant: UserSummary
+  /** Absent means a one-to-one conversation. */
+  type?: ConversationType
+  /** The group's name; only for a group. */
+  title?: string | null
+  /** How many people are in the group, you included; only for a group. */
+  memberCount?: number | null
+  /** The other person in a one-to-one conversation; null for a group. */
+  participant: UserSummary | null
   createdAt: string
   updatedAt: string
   /** Null while nobody has written yet. */
   lastMessage: LastMessage | null
-  /** The other person's messages that you have not read. */
+  /** The other people's messages that you have not read. */
   unreadCount: number
+}
+
+export type MemberRole = 'OWNER' | 'MEMBER'
+
+export interface GroupMember {
+  user: UserSummary
+  role: MemberRole
+  joinedAt: string
+}
+
+/** Pushed when a group you are in changes, or when you are no longer in it (`removed`, with no `conversation`). */
+export interface ConversationUpdate {
+  conversationId: number
+  removed: boolean
+  conversation: ConversationResponse | null
 }
 
 export interface MessageResponse {

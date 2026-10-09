@@ -66,7 +66,7 @@ function serve(initial: { conversations: ConversationResponse[]; messages?: Reco
     http.post(`${BASE}/api/conversations`, async ({ request }) => {
       const { username } = (await request.json()) as { username: string }
       state.started.push(username)
-      const found = state.conversations.find((c) => c.participant.username === username)
+      const found = state.conversations.find((c) => c.participant?.username === username)
       if (found) return HttpResponse.json(found)
       if (username === 'blocked_one') return HttpResponse.json({ status: 403, detail: 'You cannot message this user' }, { status: 403 })
       const created = conversation(900, makeUser({ id: 50, username, displayName: 'Brand New' }))

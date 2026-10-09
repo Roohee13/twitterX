@@ -1,5 +1,5 @@
 import type { InfiniteData, QueryClient } from '@tanstack/react-query'
-import type { ConversationResponse, CursorPage, MessageResponse } from '../../lib/types'
+import type { ConversationResponse, ConversationUpdate, CursorPage, MessageResponse } from '../../lib/types'
 
 export const MESSAGES_KEY = ['messages']
 export const INBOX_KEY = ['messages', 'inbox']
@@ -42,7 +42,7 @@ export async function addMessage(queryClient: QueryClient, message: MessageRespo
     const updated: ConversationResponse = {
       ...known,
       updatedAt: message.createdAt,
-      lastMessage: { id: message.id, senderId: message.sender.id, content: message.content, createdAt: message.createdAt, deleted: message.deleted, hasMedia: (message.mediaUrls?.length ?? 0) > 0 },
+      lastMessage: { id: message.id, senderId: message.sender.id, content: message.content, createdAt: message.createdAt, deleted: message.deleted, hasMedia: (message.mediaUrls?.length ?? 0) > 0, senderName: message.sender.displayName },
       unreadCount: unread ? known.unreadCount + 1 : known.unreadCount,
     }
     const [first, ...rest] = inbox.pages.map((page) => ({ ...page, items: page.items.filter((c) => c.id !== message.conversationId) }))
@@ -138,5 +138,28 @@ export async function removeConversationLocally(queryClient: QueryClient, id: nu
   queryClient.removeQueries({ queryKey: threadKey(id) })
   queryClient.removeQueries({ queryKey: conversationKey(id) })
   if (unread) addToTotal(queryClient, -unread)
+  void queryClient.invalidateQueries({ queryKey: MESSAGES_KEY })
+}
+
+/**
+ * A group you are in was created, renamed or had its members changed (pushed): the open chat and the inbox row show the new name and
+ * member count at once, then the lists are read again. When you are out of the group (you left, or were removed) it is forgotten like a
+ * deleted conversation.
+ */
+export async function applyConversationUpdate(queryClient: QueryClient, update: ConversationUpdate) {
+  const { conversation } = update
+  if (update.removed || !conversation) {
+    await removeConversationLocally(queryClient, update.conversationId)
+    return
+  }
+  await queryClient.cancelQueries({ queryKey: MESSAGES_KEY })
+  queryClient.setQueryData<ConversationResponse>(conversationKey(conversation.id), conversation)
+  const inbox = queryClient.getQueryData<Inbox>(INBOX_KEY)
+  if (inbox) {
+    queryClient.setQueryData<Inbox>(INBOX_KEY, {
+      ...inbox,
+      pages: inbox.pages.map((page) => ({ ...page, items: page.items.map((c) => (c.id === conversation.id ? conversation : c)) })),
+    })
+  }
   void queryClient.invalidateQueries({ queryKey: MESSAGES_KEY })
 }
