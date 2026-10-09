@@ -74,6 +74,10 @@ server:
   forward-headers-strategy: ${FORWARD_HEADERS_STRATEGY:none}
 
 app:
+  cleanup:
+    # Daily removal of expired refresh and email tokens (cron: second minute hour day month weekday, server time).
+    enabled: ${CLEANUP_ENABLED:true}
+    cron: ${CLEANUP_CRON:0 30 3 * * *}
   suggestions:
     # How long the most-followed accounts (the fallback for users who follow few people) are reused before recomputing.
     popular-cache-ttl: ${SUGGESTIONS_POPULAR_CACHE_TTL:10m}
@@ -81,6 +85,9 @@ app:
     # How long an account is remembered as ACTIVE before the database is asked again. Deactivating evicts it on the
     # instance that handled the request; other instances notice within this time. 0 = check on every request.
     active-user-cache-ttl: ${ACTIVE_USER_CACHE_TTL:10s}
+    # Unverified accounts cannot post, like, follow, message or upload until they click the emailed link. Turn off where no SMTP
+    # server is configured (nobody could verify). Accounts that predate verification count as verified.
+    require-verified-email: ${REQUIRE_VERIFIED_EMAIL:true}
   websocket:
     # Fan WebSocket pushes out through Redis so they reach users connected to any instance. Falls back to local
     # delivery when Redis is down. Set false to skip Redis entirely (single instance).
@@ -95,7 +102,7 @@ app:
   jwt:
     # Required, at least 32 bytes (256 bits). No default, so a misconfigured deploy fails at startup.
     secret: ${JWT_SECRET}
-    access-ttl: ${JWT_ACCESS_TTL:1d}
+    access-ttl: ${JWT_ACCESS_TTL:15m}
     refresh-ttl: ${JWT_REFRESH_TTL:30d}
   r2:
     account-id: ${R2_ACCOUNT_ID:}
@@ -105,6 +112,7 @@ app:
     public-base-url: ${R2_PUBLIC_BASE_URL:}
     presign-ttl: ${R2_PRESIGN_TTL:10m}
     max-image-bytes: ${R2_MAX_IMAGE_BYTES:5242880}
+    max-video-bytes: ${R2_MAX_VIDEO_BYTES:52428800}
     # Leave empty for Cloudflare R2. Only for another S3-compatible server (a local MinIO, for instance).
     endpoint-override: ${R2_ENDPOINT:}
   mail:

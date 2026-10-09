@@ -28,6 +28,7 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
 
     private static final String BEARER = "Bearer ";
     private static final String USER_QUEUE_PREFIX = "/user/queue/";
+    private static final String APP_PREFIX = "/app/";
 
     private final JwtService jwtService;
     private final ActiveUserCache activeUsers;
@@ -48,7 +49,15 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
                     throw new MessageDeliveryException("Subscription not allowed");
                 }
             }
-            case SEND -> requireActiveUser(accessor);
+            case SEND -> {
+                requireActiveUser(accessor);
+                // Clients may only talk to controllers under /app. Anything else (/user/<id>/queue/..., /queue/...) would be
+                // routed straight to the broker, letting one user push forged notifications or messages to another.
+                String destination = accessor.getDestination();
+                if (destination == null || !destination.startsWith(APP_PREFIX)) {
+                    throw new MessageDeliveryException("Destination not allowed");
+                }
+            }
             default -> {
             }
         }
@@ -58,7 +67,7 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
     private StompPrincipal authenticate(String header) {
         Optional<AuthUser> user = header != null && header.startsWith(BEARER)
                 ? jwtService.parse(header.substring(BEARER.length())) : Optional.empty();
-        return user.filter(u -> activeUsers.isActive(u.id()))
+        return user.filter(u -> activeUsers.isCurrent(u.id(), u.tokenVersion()))
                 .map(StompPrincipal::new)
                 .orElseThrow(() -> new MessageDeliveryException("Unauthorized"));
     }
@@ -66,7 +75,7 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
     /** Re-checked on every frame so a deactivated account loses access without waiting for the token to expire. */
     private void requireActiveUser(StompHeaderAccessor accessor) {
         if (!(accessor.getUser() instanceof StompPrincipal principal)
-                || !activeUsers.isActive(principal.user().id())) {
+                || !activeUsers.isCurrent(principal.user().id(), principal.user().tokenVersion())) {
             throw new MessageDeliveryException("Unauthorized");
         }
     }

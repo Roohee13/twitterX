@@ -22,6 +22,9 @@ import com.project.Xclone_backend.follow.FollowRequestRepository;
 import com.project.Xclone_backend.bookmark.BookmarkRepository;
 import com.project.Xclone_backend.like.LikeRepository;
 import com.project.Xclone_backend.media.MediaService;
+import com.project.Xclone_backend.message.MessageRepository;
+import com.project.Xclone_backend.mutedword.MutedWordRepository;
+import com.project.Xclone_backend.poll.PollRepository;
 import com.project.Xclone_backend.mute.Mute;
 import com.project.Xclone_backend.mute.MuteRepository;
 import com.project.Xclone_backend.notification.NotificationService;
@@ -67,6 +70,9 @@ public class UserService {
     private final EmailTokenService emailTokenService;
     private final EmailTokenRepository emailTokenRepository;
     private final ActiveUserCache activeUserCache;
+    private final MessageRepository messageRepository;
+    private final MutedWordRepository mutedWordRepository;
+    private final PollRepository pollRepository;
 
     /** Only active accounts can be looked up by handle: a deactivated, suspended or removed one answers 404 to every action (follow, block, report, message ...). */
     public User requireByUsername(String username) {
@@ -77,6 +83,20 @@ public class UserService {
 
     public User requireById(Long id) {
         return userRepository.findById(id).orElseThrow(() -> ApiException.notFound("User not found"));
+    }
+
+    /**
+     * Whether {@code senderId} may message {@code recipient} under the recipient's "who can message me" setting. Blocks and account status
+     * are checked elsewhere. Someone the recipient has already written to can always answer, so a closed inbox never strands a conversation
+     * the owner started.
+     */
+    public boolean canMessage(User recipient, Long senderId) {
+        return switch (recipient.getDmPolicy()) {
+            case EVERYONE -> true;
+            case FOLLOWED -> followRepository.existsByFollowerIdAndFolloweeId(recipient.getId(), senderId)
+                    || messageRepository.hasWrittenTo(recipient.getId(), senderId);
+            case NOBODY -> messageRepository.hasWrittenTo(recipient.getId(), senderId);
+        };
     }
 
     /** Throws if either user has blocked the other. */
@@ -109,6 +129,9 @@ public class UserService {
         }
         if (req.bannerKey() != null) {
             user.setBannerKey(resolveMediaKey(userId, req.bannerKey()));
+        }
+        if (req.dmPolicy() != null) {
+            user.setDmPolicy(req.dmPolicy());
         }
         if (req.protectedAccount() != null) {
             boolean wasProtected = user.isProtectedAccount();
@@ -166,7 +189,9 @@ public class UserService {
         User user = requireById(userId);
         requirePassword(user, req.currentPassword());
         user.setPasswordHash(passwordEncoder.encode(req.newPassword()));
+        user.setTokenVersion(user.getTokenVersion() + 1); // every access token issued so far stops working now
         refreshTokenRepository.revokeAllForUser(userId);
+        activeUserCache.evictAfterCommit(userId);
     }
 
     /** Nothing is deleted and all sessions end; logging in with the correct password reactivates the account. */
@@ -217,11 +242,14 @@ public class UserService {
         Long userId = user.getId();
         postRepository.decrementReplyCountsForAuthor(userId);
         postRepository.decrementLikeCountsForLiker(userId);
+        pollRepository.decrementCountsForVoter(userId);
+        pollRepository.deleteVotesByUser(userId);
         postRepository.decrementRepostCountsForReposter(userId);
         likeRepository.deleteAllByUser(userId);
         bookmarkRepository.deleteAllByUser(userId);
         followRepository.deleteAllInvolving(userId);
         muteRepository.deleteAllInvolving(userId);
+        mutedWordRepository.deleteAllByUser(userId);
         followRequestRepository.deleteAllInvolving(userId);
         notificationService.removeAllInvolving(userId);
         refreshTokenRepository.deleteAllForUser(userId);
@@ -230,6 +258,10 @@ public class UserService {
         postRepository.deleteMentionLinksInvolving(userId);
         postRepository.deleteMediaForAuthor(userId);
         postRepository.softDeleteAndClearAllByAuthor(userId);
+        // What the person wrote in direct messages goes too; the other side keeps only "deleted" placeholders so their chat keeps its order.
+        messageRepository.deleteMediaSentBy(userId);
+        messageRepository.eraseSentBy(userId);
+        mediaService.deleteAllForUserAfterCommit(userId);
 
         // '~' is not allowed in usernames, so these can never collide with a real account.
         user.setUsername("~" + userId);
@@ -275,10 +307,12 @@ public class UserService {
                 && muteRepository.existsByMuterIdAndMutedId(viewerId, user.getId());
         boolean followRequestedByMe = viewerId != null && user.isProtectedAccount()
                 && followRequestRepository.existsByRequesterIdAndTargetId(viewerId, user.getId());
+        boolean canMessage = viewerId != null && !viewerId.equals(user.getId()) && canMessage(user, viewerId)
+                && !blockRepository.existsBetween(viewerId, user.getId());
         return userMapper.toProfile(user,
                 followRepository.countByFolloweeId(user.getId()),
                 followRepository.countByFollowerId(user.getId()),
-                followedByMe, blockedByMe, mutedByMe, followRequestedByMe);
+                followedByMe, blockedByMe, mutedByMe, followRequestedByMe, canMessage);
     }
 
     public enum FollowResult { FOLLOWING, REQUESTED }

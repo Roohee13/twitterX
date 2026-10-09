@@ -49,6 +49,24 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
             """)
     long countUnreadTotal(Long userId);
 
+    /** Whether {@code writerId} has ever written to {@code otherId} (in a chat between the two, whatever was deleted since). */
+    @Query("""
+            select count(m) > 0 from Message m join m.conversation c
+            where m.sender.id = :writerId
+              and ((c.userOne.id = :writerId and c.userTwo.id = :otherId) or (c.userTwo.id = :writerId and c.userOne.id = :otherId))
+            """)
+    boolean hasWrittenTo(Long writerId, Long otherId);
+
+    /** Account deletion: the photos of every message the user sent. */
+    @Modifying
+    @Query("delete from MessageMedia mm where mm.message.id in (select m.id from Message m where m.sender.id = :userId)")
+    void deleteMediaSentBy(Long userId);
+
+    /** Account deletion: turns every message the user sent into the same "deleted" placeholder a manual delete leaves. */
+    @Modifying
+    @Query("update Message m set m.content = '', m.deleted = true where m.sender.id = :userId and m.deleted = false")
+    void eraseSentBy(Long userId);
+
     /** Never touches the user's own messages. */
     @Modifying
     @Query("""

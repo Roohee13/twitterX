@@ -22,6 +22,8 @@ import com.project.Xclone_backend.post.PostDtos.PostResponse;
 import com.project.Xclone_backend.post.PostDtos.UpdatePostRequest;
 import com.project.Xclone_backend.post.PostDtos.UpdateReplyPolicyRequest;
 import com.project.Xclone_backend.report.ReportDtos.ReportRequest;
+import com.project.Xclone_backend.poll.PollDtos.PollResponse;
+import com.project.Xclone_backend.poll.PollDtos.VoteRequest;
 import com.project.Xclone_backend.security.AuthUser;
 import com.project.Xclone_backend.user.UserDtos.UserSummary;
 
@@ -124,6 +126,11 @@ public class PostController {
     public CursorPage<PostResponse> bookmarks(@AuthenticationPrincipal AuthUser me,
             @RequestParam(required = false) Long cursor, @RequestParam(required = false) Integer limit) {
         return postService.bookmarks(me.id(), cursor, limit);
+    }
+
+    @PostMapping("/posts/{id}/poll/vote")
+    public PollResponse vote(@PathVariable Long id, @AuthenticationPrincipal AuthUser me, @Valid @RequestBody VoteRequest req) {
+        return postService.votePoll(id, me.id(), req.optionId());
     }
 
     @PostMapping("/posts/{id}/like")

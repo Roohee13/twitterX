@@ -18,6 +18,8 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import com.project.Xclone_backend.ratelimit.RateLimitFilter;
 import com.project.Xclone_backend.ratelimit.RateLimitProperties;
 import com.project.Xclone_backend.ratelimit.RateLimiter;
+import com.project.Xclone_backend.security.EmailVerificationFilter;
+import com.project.Xclone_backend.security.EmailVerificationGuard;
 import com.project.Xclone_backend.security.JwtAuthFilter;
 import com.project.Xclone_backend.security.ProblemAuthEntryPoint;
 
@@ -26,7 +28,8 @@ public class SecurityConfig {
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthFilter jwtAuthFilter,
-            ProblemAuthEntryPoint problemHandler, RateLimiter rateLimiter, RateLimitProperties rateLimitProperties)
+            ProblemAuthEntryPoint problemHandler, RateLimiter rateLimiter, RateLimitProperties rateLimitProperties,
+            EmailVerificationGuard emailVerificationGuard)
             throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
@@ -46,7 +49,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/users/**", "/api/posts/**", "/api/hashtags/**", "/api/trending/**").permitAll()
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterAfter(new RateLimitFilter(rateLimiter, rateLimitProperties.enabled()), JwtAuthFilter.class);
+                .addFilterAfter(new RateLimitFilter(rateLimiter, rateLimitProperties.enabled()), JwtAuthFilter.class)
+                .addFilterAfter(new EmailVerificationFilter(emailVerificationGuard), RateLimitFilter.class);
         return http.build();
     }
 

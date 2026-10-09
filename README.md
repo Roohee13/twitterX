@@ -2,7 +2,7 @@
 
 A minimal X (Twitter) clone REST API built with Spring Boot 4, PostgreSQL, and Cloudflare R2 for images.
 
-Features: JWT auth (access + rotating refresh tokens), profiles, posts with up to 4 images, replies, likes, follows, blocking, a home timeline, and user search.
+Features: JWT auth (access + rotating refresh tokens), profiles, posts with up to 4 images or one video, polls, replies, likes, follows, blocking and muting (accounts and words), a home timeline, direct messages with privacy controls, and user search.
 
 ## Running locally
 
@@ -41,12 +41,14 @@ Redis-backed fixed-window limits (`ratelimit/RateLimitRules.java`), answering `4
 Reads are not limited. If Redis is unreachable the limiter fails open and retries Redis after 30 s. Behind a load balancer set
 `FORWARD_HEADERS_STRATEGY=framework` so limits use the real client IP; leave it unset otherwise (the header is spoofable).
 **Important:** on a managed host (Render, Fly, Railway, a cloud load balancer) the app sits behind a proxy, so without that setting every user shares the proxy's IP and therefore one login limit. Set it there, and only if clients cannot reach the app except through the proxy.
-`RATE_LIMIT_ENABLED=false` turns it off. Messages sent over the WebSocket are not covered yet.
+`RATE_LIMIT_ENABLED=false` turns it off. Messages sent over the WebSocket draw from the **same** per-user allowance as `POST /conversations/{id}/messages` (60 / min), so the socket is not a way around it.
+
+**Failed sign-ins.** On top of the per-IP login limit, 10 wrong passwords for one account name within 15 minutes lock sign-in for that name until the window ends (`429` with `Retry-After`), whichever IP they come from. The count is of the name that was typed, existing or not, so a lock reveals nothing about which accounts exist; a correct sign-in clears it. A wrong name also costs as much time as a wrong password. Like the other limits it needs Redis and fails open without it. The trade-off of any lockout: someone who knows a username can lock its owner out for up to 15 minutes; the owner can still reset the password by email.
 
 ### Real-time (WebSocket / STOMP)
 
 Connect to `ws://<host>/ws` and send the access token in the STOMP `CONNECT` frame header `Authorization: Bearer <token>`
-(browsers cannot set headers on the handshake). Subscribe to per-user queues:
+(browsers cannot set headers on the handshake). Clients may only `SEND` to `/app/...`; a frame to any other destination (for example `/user/<id>/queue/...`) is refused with an ERROR frame and the connection closes, so nobody can push forged frames to another user. Subscribe to per-user queues:
 
 | Destination | Payload |
 |---|---|
@@ -180,6 +182,10 @@ For another S3-compatible server (for example a local MinIO) set `R2_ENDPOINT` t
 
 Allowed types are jpeg, png, webp and gif, up to 5 MB by default. The server only accepts keys under the caller's own `users/{id}/` prefix that actually exist in the bucket.
 
+**Video.** A post can carry **one video** (`video/mp4` or `video/webm`, up to 50 MB; `R2_MAX_VIDEO_BYTES`) instead of images, never both. Upload it with the same two steps, then send its key in `mediaKeys` (a video alone is a post). The server also reads the file's first bytes (`ftyp` for MP4, the EBML header for WebM), because the declared type comes from the uploader. Videos are stored and played as uploaded: there is no transcoding, so QuickTime/`.mov` is refused and a very large file plays as well as the viewer's connection allows. Clients tell a video from an image by the address ending in `.mp4` / `.webm`. Direct messages, avatars and banners stay image-only. R2's CORS rule from the setup above already covers video uploads.
+
+**Account deletion and files.** Deleting an account (or an admin removing one) also deletes every file under `users/{id}/` in the bucket after the deletion commits (best effort: a storage error is logged and never fails the deletion), and erases what the person wrote in direct messages: their messages become "deleted" placeholders and their message photos are removed. Messages other people sent them are not theirs to erase and stay.
+
 ## API
 
 All endpoints are under `/api`. Send `Authorization: Bearer <accessToken>` for authenticated calls. Errors use RFC 9457 problem JSON.
@@ -223,7 +229,10 @@ All endpoints are under `/api`. Send `Authorization: Bearer <accessToken>` for a
 | DELETE | `/notifications/{id}` | ✓ | |
 | GET | `/timeline` | ✓ | your posts + people you follow, newest first (the **Following** tab) |
 | GET | `/timeline/for-you` | ✓ | the ranked **For you** feed: popular recent posts mixed with the people you follow. Paged with `?cursor=&limit=` like the others, but the cursor is opaque (see below) and the feed ends after 200 posts |
-| POST | `/media/upload-url` | ✓ | see above |
+| POST | `/media/upload-url` | ✓ | see above (images, and videos for posts) |
+| POST | `/posts/{id}/poll/vote` | ✓ | `{optionId}`; returns the poll. See *Polls* below |
+| GET / POST | `/muted-words` | ✓ | list / add `{word}`. See *Muted words* below |
+| DELETE | `/muted-words/{id}` | ✓ | safe to repeat; 204 |
 
 **Protected accounts.** With `protectedAccount: true`, following needs the owner's approval, and the account's posts, replies, likes tab, follower and
 following lists are visible only to the owner and approved followers (everyone else, including anonymous visitors, gets `403`; the profile itself stays public and
@@ -240,6 +249,31 @@ The owner is notified of requests (`FOLLOW_REQUEST`). Turning protection off app
 - A post you write appears at the top of the feed you are looking at at once, but the next time the feed is reloaded it sits where its score puts it (a new post has no likes yet); it is always on your profile and in Following.
 
 **Pagination.** Paged endpoints accept `?cursor=&limit=` (default 20, max 50) and return `{ items, nextCursor }`. Pass `nextCursor` back to get the next page; `null` means there are no more pages.
+
+## Polls
+
+`POST /api/posts` accepts `poll: {options: ["Cats", "Dogs"], durationMinutes: 1440}` on a **new top-level post** (not a reply, a quote, a thread item or a post with media; the text may be empty). 2 to 4 options of 1 to 25 characters, different from each other (ignoring case); the length is 5 minutes to 7 days, one day if left out.
+Every post response carries `poll` (`null` for none): `{id, options: [{id, text, voteCount}], totalVotes, expiresAt, ended, myVoteOptionId}`. Results are visible to everyone; `myVoteOptionId` is null until the viewer votes.
+
+`POST /api/posts/{id}/poll/vote` `{optionId}` records one vote per person (the author may vote too) and returns the updated poll. `409` if you already voted (a vote cannot be changed) or the poll has ended, `400` for an option that is not in the poll,
+`403` for a blocked pair or a protected account you may not see, `404` if the post has no poll. Unverified accounts cannot vote (see *Email*). Deleting an account removes its votes from the totals. Votes are counted by atomic updates, so two taps at once cannot count twice.
+
+## Muted words
+
+`GET/POST /api/muted-words`, `DELETE /api/muted-words/{id}` manage a private list (up to 200 words or phrases of 1 to 50 characters; stored trimmed, with single spaces, in lower case; adding a word you already have is a no-op).
+Posts containing a muted word are left out of **Following, For you, hashtag pages and search** for that person. Matching is by whole word or phrase, ignoring case, so muting `ass` does not hide `class`, while `cats` matches `#cats` and `Cats!`.
+A repost is checked by its original text and a quote post by both texts. **Your own posts are never hidden from you**, and profile pages, the replies under a post and notifications are not filtered. A page is filled past hidden posts (up to 5 extra fetches per request), so you never get a short page with a cursor that leads nowhere.
+
+## Who can message me
+
+`PATCH /api/users/me` takes `dmPolicy`: `EVERYONE` (default), `FOLLOWED` (only accounts you follow) or `NOBODY`; `GET /users/me` returns it. It is checked when a **new** conversation is started (`403 This person is not accepting messages from you`) and when a message is **sent**.
+**Someone you have already written to can always answer**, so closing your inbox never strands a conversation you began; opening an existing conversation to read it is always allowed, and editing or deleting your own messages is not a new message. The profile response has `canMessage` (false when signed out, for yourself, when blocked, or when their setting rules you out) so a client can hide its Message button.
+
+## Housekeeping
+
+A daily job (03:30 server time; `CLEANUP_CRON`, `CLEANUP_ENABLED=false` to switch off) deletes expired refresh tokens and expired email tokens. With several instances a short Redis lock lets one of them run it; if Redis is down every instance runs it, which is harmless because the deletes are idempotent.
+Access tokens are short-lived (`JWT_ACCESS_TTL`, 15 minutes by default) and carry the account's `token_version`; changing or resetting the password bumps it, so every access token issued before stops working at once (other instances notice within `ACTIVE_USER_CACHE_TTL`).
+Not cleaned up yet: files in the bucket that were uploaded but never attached to anything (an abandoned upload, a replaced avatar, a deleted post's images).
 
 ## Trending
 
@@ -307,7 +341,7 @@ Suspension is not deactivation: deactivating is the user's own choice and signin
 
 Registering and changing your email send a verification link (`emailVerified` in the user response; accounts that
 existed before this feature count as verified), and "forgot password" sends a reset link. Moderation notices (post removed, account suspended ...) are emailed too.
-Nothing is blocked for unverified users yet. Links point to `FRONTEND_URL/verify-email?token=…` and `FRONTEND_URL/reset-password?token=…`
+Until the address is confirmed an account can read, change its settings and block or report, but **cannot post, reply, repost, like, follow, message or upload** (`403 Verify your email address to do this`); accounts created before verification existed count as verified. Set `REQUIRE_VERIFIED_EMAIL=false` on a deployment with no SMTP server, where nobody could ever verify. Links point to `FRONTEND_URL/verify-email?token=…` and `FRONTEND_URL/reset-password?token=…`
 (`FRONTEND_URL` defaults to `http://localhost:5173`; set it if the frontend runs elsewhere). Sender: `MAIL_FROM`.
 
 How sending behaves: an email is queued once the database transaction has **committed** and is delivered on a background thread, so a slow or

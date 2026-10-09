@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useId, useState } from 'react'
 import { useToast } from '../../components/ui/Toast'
 import { ApiError, api } from '../../lib/api'
-import type { UserResponse } from '../../lib/types'
+import type { DmPolicy, UserResponse } from '../../lib/types'
 import { useAuth, useCurrentUser } from '../auth/AuthContext'
 
 /** The protected-account switch. It saves as soon as it is flipped, and flips back if the server says no. */
@@ -13,6 +13,25 @@ export function PrivacySection() {
   const toast = useToast()
   const [busy, setBusy] = useState(false)
   const id = useId()
+
+  const dmId = useId()
+  const [dmBusy, setDmBusy] = useState(false)
+
+  async function changeDmPolicy(wanted: DmPolicy) {
+    const before = user
+    setDmBusy(true)
+    setUser({ ...user, dmPolicy: wanted })
+    try {
+      setUser(await api.patch<UserResponse>('/api/users/me', { dmPolicy: wanted }))
+      toast('Message settings saved.')
+      void queryClient.invalidateQueries({ queryKey: ['profile'] })
+    } catch (e) {
+      setUser(before)
+      toast(e instanceof ApiError ? e.message : 'Could not change that setting.', 'error')
+    } finally {
+      setDmBusy(false)
+    }
+  }
 
   async function toggle() {
     const wanted = !user.protectedAccount
@@ -53,6 +72,24 @@ export function PrivacySection() {
         >
           <span aria-hidden="true" className={`absolute top-0.5 h-6 w-6 rounded-full bg-white transition-all ${user.protectedAccount ? 'left-[22px]' : 'left-0.5'}`} />
         </button>
+      </div>
+      <div className="mt-5">
+        <label htmlFor={dmId} className="font-semibold">Who can message me</label>
+        <p id={`${dmId}-help`} className="text-sm text-zinc-500">
+          People you have already written to can always answer. Existing conversations stay in your inbox.
+        </p>
+        <select
+          id={dmId}
+          aria-describedby={`${dmId}-help`}
+          value={user.dmPolicy}
+          disabled={dmBusy}
+          onChange={(e) => void changeDmPolicy(e.target.value as DmPolicy)}
+          className="mt-2 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 disabled:opacity-60"
+        >
+          <option value="EVERYONE">Everyone</option>
+          <option value="FOLLOWED">Only people I follow</option>
+          <option value="NOBODY">No one</option>
+        </select>
       </div>
     </section>
   )

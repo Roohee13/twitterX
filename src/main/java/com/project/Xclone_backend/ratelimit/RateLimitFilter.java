@@ -42,7 +42,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
         var rule = RateLimitRules.match(request.getMethod(), request.getRequestURI()).orElse(null);
         String subject = rule == null ? null : subject(rule, request);
         if (subject != null) {
-            Decision decision = limiter.check("rl:" + rule.name() + ":" + subject, rule.limit(), rule.window());
+            Decision decision = limiter.check(RateLimitRules.key(rule, subject), rule.limit(), rule.window());
             if (!decision.allowed()) {
                 reject(response, decision.retryAfterSeconds());
                 return;

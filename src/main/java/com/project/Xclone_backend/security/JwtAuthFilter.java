@@ -31,7 +31,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         if (header != null && header.startsWith(BEARER)) {
             // Tokens of deactivated or deleted accounts stop working immediately, not when they expire.
             jwtService.parse(header.substring(BEARER.length()))
-                    .filter(user -> activeUsers.isActive(user.id()))
+                    .filter(user -> activeUsers.isCurrent(user.id(), user.tokenVersion()))
                     .ifPresent(user -> {
                         var auth = new UsernamePasswordAuthenticationToken(user, null, List.of());
                         SecurityContextHolder.getContext().setAuthentication(auth);

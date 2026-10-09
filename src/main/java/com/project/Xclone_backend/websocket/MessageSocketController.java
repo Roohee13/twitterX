@@ -14,6 +14,11 @@ import org.springframework.stereotype.Controller;
 import org.springframework.validation.FieldError;
 
 import com.project.Xclone_backend.common.ApiException;
+import com.project.Xclone_backend.security.EmailVerificationGuard;
+import com.project.Xclone_backend.ratelimit.RateLimitProperties;
+import com.project.Xclone_backend.ratelimit.RateLimitRules;
+import com.project.Xclone_backend.ratelimit.RateLimitedException;
+import com.project.Xclone_backend.ratelimit.RateLimiter;
 import com.project.Xclone_backend.message.MessageDtos.MessageResponse;
 import com.project.Xclone_backend.message.MessageDtos.SendMessageRequest;
 import com.project.Xclone_backend.message.MessageService;
@@ -32,13 +37,27 @@ import lombok.extern.slf4j.Slf4j;
 public class MessageSocketController {
 
     private final MessageService messageService;
+    private final RateLimiter rateLimiter;
+    private final RateLimitProperties rateLimitProperties;
+    private final EmailVerificationGuard emailVerificationGuard;
 
     /** The saved message is acknowledged to the sender on /user/queue/sent. */
     @MessageMapping("/conversations/{conversationId}/messages")
     @SendToUser("/queue/sent")
     public MessageResponse send(@DestinationVariable Long conversationId, @Valid @Payload SendMessageRequest req,
             Principal principal) {
-        return messageService.send(((StompPrincipal) principal).user().id(), conversationId, req.content(), req.mediaKeys());
+        Long meId = ((StompPrincipal) principal).user().id();
+        emailVerificationGuard.requireVerified(meId);
+        if (rateLimitProperties.enabled()) {
+            // The same allowance as POST /conversations/{id}/messages: the socket must not be a way around it.
+            var rule = RateLimitRules.MESSAGE_SEND;
+            var decision = rateLimiter.check(RateLimitRules.key(rule, "u:" + meId), rule.limit(), rule.window());
+            if (!decision.allowed()) {
+                throw new RateLimitedException("Rate limit exceeded. Try again in " + decision.retryAfterSeconds() + " seconds.",
+                        decision.retryAfterSeconds());
+            }
+        }
+        return messageService.send(meId, conversationId, req.content(), req.mediaKeys());
     }
 
     @MessageExceptionHandler

@@ -19,6 +19,7 @@ import { PostActionBar } from './PostActionBar'
 import { PostCard, postKey, QuotedPost } from './PostCard'
 import { PostMenuThatLeavesOnDelete } from './PostMenu'
 import { PostMedia } from './PostMedia'
+import { PostPoll } from './PostPoll'
 import { PostText } from './PostText'
 
 const retryUnlessClientError = (failures: number, error: Error) => !(error instanceof ApiError && error.status >= 400 && error.status < 500) && failures < 2
@@ -89,6 +90,7 @@ function FocusedPost({ post }: { post: PostResponse }) {
       </div>
       <PostText content={post.content} mentions={post.mentions} className="mt-3 text-xl" />
       <PostMedia urls={post.mediaUrls} />
+      <PostPoll post={post} />
       {post.quotedPost && <QuotedPost post={post.quotedPost} />}
       <p className="mt-3 text-[15px] text-zinc-500"><time dateTime={post.createdAt}>{fullDate(post.createdAt)}</time></p>
       <div className="mt-3 flex gap-5 border-y border-zinc-800 py-3 text-[15px]" aria-label="Post statistics" role="group">

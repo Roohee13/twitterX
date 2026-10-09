@@ -258,3 +258,113 @@ describe('Composer: threads', () => {
     expect(screen.queryByRole('button', { name: 'Add another post' })).not.toBeInTheDocument()
   }, 30_000)
 })
+
+describe('Composer: polls', () => {
+  const addPoll = () => userEvent.click(screen.getByRole('button', { name: 'Add poll' }))
+  const option = (n: number) => screen.getByLabelText(`Poll option ${n}`)
+
+  it('needs two different options before it can be posted, and sends them with the length', async () => {
+    let body: unknown
+    server.use(http.post(`${BASE}/api/posts`, async ({ request }) => {
+      body = await request.json()
+      return HttpResponse.json(makePost({ id: 9 }), { status: 201 })
+    }))
+    renderSignedIn(<Composer />)
+    await screen.findByRole('textbox')
+    await addPoll()
+    expect(postButton()).toBeDisabled() // a poll with empty options is not a post
+
+    await userEvent.type(option(1), ' Cats ')
+    expect(postButton()).toBeDisabled()
+    await userEvent.type(option(2), 'cats')
+    expect(postButton()).toBeDisabled() // the same option twice
+    await userEvent.clear(option(2))
+    await userEvent.type(option(2), 'Dogs')
+    expect(postButton()).toBeEnabled() // text is optional for a poll
+
+    await userEvent.selectOptions(screen.getByLabelText('Poll length'), '6 hours')
+    await userEvent.click(postButton())
+
+    await waitFor(() => expect(body).toEqual({ content: '', poll: { options: ['Cats', 'Dogs'], durationMinutes: 360 }, replyPolicy: 'EVERYONE' }))
+    expect(screen.queryByLabelText('Poll option 1')).not.toBeInTheDocument()
+  })
+
+  it('allows up to four options, can be removed, and is not offered on replies', async () => {
+    const view = renderSignedIn(<Composer />)
+    await screen.findByRole('textbox')
+    await addPoll()
+    const add = screen.getByRole('button', { name: 'Add option' })
+    await userEvent.click(add)
+    await userEvent.click(add)
+    expect(screen.getAllByLabelText(/^Poll option/)).toHaveLength(4)
+    expect(add).toBeDisabled()
+    // While a poll is on, images and threads are off the table.
+    expect(screen.getByRole('button', { name: 'Add images' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Add another post' })).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Remove poll' }))
+    expect(screen.queryByLabelText('Poll option 1')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add images' })).toBeEnabled()
+    view.unmount()
+
+    renderSignedIn(<Composer replyTo={makePost({ id: 3 })} />)
+    await screen.findByRole('textbox')
+    expect(screen.queryByRole('button', { name: 'Add poll' })).not.toBeInTheDocument()
+  })
+})
+
+describe('Composer: video', () => {
+  const mp4 = (name = 'clip.mp4') => new File([new Uint8Array(64)], name, { type: 'video/mp4' })
+  const chooser = () => screen.getByLabelText('Choose images')
+
+  it('uploads one video, shows a preview, and sends its key', async () => {
+    let body: Record<string, unknown> = {}
+    let uploadType: unknown
+    server.use(
+      http.post(`${BASE}/api/media/upload-url`, async ({ request }) => {
+        uploadType = ((await request.json()) as { contentType: string }).contentType
+        return HttpResponse.json({ key: 'users/1/clip.mp4', uploadUrl: 'https://r2.test/up1', headers: { 'content-type': ['video/mp4'] }, publicUrl: 'https://media.test/clip.mp4', expiresAt: 'x' })
+      }),
+      http.put('https://r2.test/up1', () => new HttpResponse(null, { status: 200 })),
+      http.post(`${BASE}/api/posts`, async ({ request }) => ((body = (await request.json()) as typeof body), HttpResponse.json(makePost(), { status: 201 }))),
+    )
+    renderSignedIn(<Composer />)
+    await screen.findByRole('textbox')
+
+    await userEvent.upload(chooser(), mp4())
+
+    expect(await screen.findByLabelText('Selected video preview')).toBeInTheDocument()
+    expect(uploadType).toBe('video/mp4')
+    // Once a video is attached nothing else can be, and it can be taken off again.
+    expect(screen.getByRole('button', { name: 'Add images' })).toBeDisabled()
+    await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument())
+    await userEvent.click(postButton()) // a video alone is a post
+    await waitFor(() => expect(body).toEqual({ content: '', mediaKeys: ['users/1/clip.mp4'], replyPolicy: 'EVERYONE' }))
+  })
+
+  it('refuses a video together with images, or two videos, and a poll cannot join a video', async () => {
+    server.use(...uploadHandlers())
+    renderSignedIn(<Composer />)
+    await screen.findByRole('textbox')
+
+    await userEvent.upload(chooser(), [mp4('a.mp4'), mp4('b.mp4')])
+    expect(await screen.findByRole('alert')).toHaveTextContent('one video, or up to four images, not both')
+    expect(screen.queryByLabelText('Selected video preview')).not.toBeInTheDocument()
+
+    await userEvent.upload(chooser(), png())
+    await screen.findByAltText('Selected image preview')
+    await userEvent.upload(chooser(), mp4())
+    expect(await screen.findByRole('alert')).toHaveTextContent('not both')
+    expect(screen.queryByLabelText('Selected video preview')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add poll' })).toBeDisabled()
+  })
+
+  it('refuses a video over the size limit', async () => {
+    renderSignedIn(<Composer />)
+    await screen.findByRole('textbox')
+    const big = mp4('big.mp4')
+    Object.defineProperty(big, 'size', { value: 60 * 1024 * 1024 })
+    await userEvent.upload(chooser(), big)
+    expect(await screen.findByRole('alert')).toHaveTextContent('videos can be at most 50 MB')
+  })
+})

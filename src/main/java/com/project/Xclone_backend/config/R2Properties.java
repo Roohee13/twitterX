@@ -13,6 +13,8 @@ public record R2Properties(
         String publicBaseUrl,
         Duration presignTtl,
         long maxImageBytes,
+        /** Largest video a post may carry. */
+        long maxVideoBytes,
         /** Empty for Cloudflare (the endpoint is derived from the account id). Set it only to point at another S3-compatible server, such as a local MinIO. */
         String endpointOverride) {
 

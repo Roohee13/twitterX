@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import com.project.Xclone_backend.ratelimit.RateLimitedException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -20,6 +21,13 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    @ExceptionHandler(RateLimitedException.class)
+    public org.springframework.http.ResponseEntity<ProblemDetail> handleRateLimited(RateLimitedException ex) {
+        return org.springframework.http.ResponseEntity.status(ex.getStatus())
+                .header(org.springframework.http.HttpHeaders.RETRY_AFTER, String.valueOf(ex.getRetryAfterSeconds()))
+                .body(ProblemDetail.forStatusAndDetail(ex.getStatus(), ex.getMessage()));
+    }
 
     @ExceptionHandler(ApiException.class)
     public ProblemDetail handleApi(ApiException ex) {

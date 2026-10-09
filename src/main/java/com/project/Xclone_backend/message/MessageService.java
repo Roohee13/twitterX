@@ -40,7 +40,7 @@ public class MessageService {
 
     @Transactional
     public MessageResponse send(Long meId, Long conversationId, String content, List<String> mediaKeys) {
-        Conversation conversation = conversationService.requireAccessible(meId, conversationId);
+        Conversation conversation = conversationService.requireCanSend(meId, conversationId);
         String text = content == null ? "" : content.strip();
         List<String> keys = mediaKeys == null ? List.of() : List.copyOf(new LinkedHashSet<>(mediaKeys));
         if (text.isEmpty() && keys.isEmpty()) {

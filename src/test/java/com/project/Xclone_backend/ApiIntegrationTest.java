@@ -2087,8 +2087,25 @@ class ApiIntegrationTest {
         mvc.perform(json(post("/api/auth/login"),
                 "{\"usernameOrEmail\":\"" + a.username() + "\",\"password\":\"brand-new-pass\"}"))
                 .andExpect(status().isOk());
-        // Every earlier session is signed out.
+        // Every earlier session is signed out, access tokens included (they would otherwise live on until they expire).
         mvc.perform(json(post("/api/auth/refresh"), refreshBody(a.refreshToken()))).andExpect(status().isUnauthorized());
+        mvc.perform(auth(get("/api/users/me"), a)).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void changingThePasswordInvalidatesEarlierAccessTokens() throws Exception {
+        Account a = register();
+        mvc.perform(auth(get("/api/users/me"), a)).andExpect(status().isOk());
+        mvc.perform(json(auth(patch("/api/users/me/password"), a),
+                "{\"currentPassword\":\"password123\",\"newPassword\":\"brand-new-pass\"}"))
+                .andExpect(status().isNoContent());
+
+        mvc.perform(auth(get("/api/users/me"), a)).andExpect(status().isUnauthorized());
+        String fresh = mvc.perform(json(post("/api/auth/login"),
+                "{\"usernameOrEmail\":\"" + a.username() + "\",\"password\":\"brand-new-pass\"}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        mvc.perform(get("/api/users/me").header("Authorization", "Bearer " + JsonPath.read(fresh, "$.accessToken")))
+                .andExpect(status().isOk());
     }
 
     @Test

@@ -112,7 +112,7 @@ class StorageCheckTest {
     }
 
     private R2Properties props(String endpoint, String accountId, String accessKey, String publicBase) {
-        return new R2Properties(accountId, accessKey, "secret-secret-secret-secret", "xclone-media", publicBase, Duration.ofMinutes(10), 5_242_880, endpoint);
+        return new R2Properties(accountId, accessKey, "secret-secret-secret-secret", "xclone-media", publicBase, Duration.ofMinutes(10), 5_242_880, 52_428_800, endpoint);
     }
 
     private StorageCheckService service(R2Properties props) throws Exception {
@@ -235,7 +235,7 @@ class StorageCheckTest {
 
     @Test
     void missingCredentialsListWhatIsMissingAndGoNoFurther() throws Exception {
-        StorageCheckResponse result = service(new R2Properties("", "", "", "xclone-media", "", Duration.ofMinutes(10), 5_242_880, "")).check(ADMIN, null);
+        StorageCheckResponse result = service(new R2Properties("", "", "", "xclone-media", "", Duration.ofMinutes(10), 5_242_880, 52_428_800, "")).check(ADMIN, null);
 
         assertThat(result.ok()).isFalse();
         assertThat(ids(result)).containsExactly("config");

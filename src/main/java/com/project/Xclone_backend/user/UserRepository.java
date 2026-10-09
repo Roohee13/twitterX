@@ -25,6 +25,12 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     boolean existsByIdAndStatus(Long id, AccountStatus status);
 
+    boolean existsByIdAndEmailVerifiedFalse(Long id);
+
+    /** The account's current token version, or empty when it is not ACTIVE. */
+    @Query("select u.tokenVersion from User u where u.id = :id and u.status = com.project.Xclone_backend.user.AccountStatus.ACTIVE")
+    java.util.Optional<Integer> findActiveTokenVersion(Long id);
+
     /** {@code prefix} must already be lowercased, LIKE-escaped and end with {@code %}. */
     @Query("""
             select u from User u

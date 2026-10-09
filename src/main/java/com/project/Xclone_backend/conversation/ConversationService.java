@@ -29,6 +29,8 @@ public class ConversationService {
     private final UserMapper userMapper;
     private final MessageRepository messageRepository;
 
+    static final String NOT_ACCEPTING = "This person is not accepting messages from you";
+
     public record Result(ConversationResponse conversation, boolean created) {
     }
 
@@ -42,6 +44,10 @@ public class ConversationService {
 
         Long low = Math.min(meId, other.getId());
         Long high = Math.max(meId, other.getId());
+        // Opening a chat that already exists is always fine (it may hold history); a new one needs the other person's permission.
+        if (conversationRepository.findByPair(low, high).isEmpty() && !userService.canMessage(other, meId)) {
+            throw ApiException.forbidden(NOT_ACCEPTING);
+        }
         boolean created = conversationRepository.createIfAbsent(low, high) > 0;
         Conversation c = conversationRepository.findByPair(low, high)
                 .orElseThrow(() -> ApiException.notFound("Conversation not found"));
@@ -97,6 +103,15 @@ public class ConversationService {
             throw ApiException.notFound("Conversation not found");
         }
         userService.requireNotBlocked(meId, other.getId());
+        return c;
+    }
+
+    /** For sending: everything {@link #requireAccessible} checks, plus the other person's "who can message me" setting. */
+    public Conversation requireCanSend(Long meId, Long id) {
+        Conversation c = requireAccessible(meId, id);
+        if (!userService.canMessage(other(c, meId), meId)) {
+            throw ApiException.forbidden(NOT_ACCEPTING);
+        }
         return c;
     }
 

@@ -18,7 +18,7 @@ public class UserMapper {
     public UserResponse toResponse(User u) {
         return new UserResponse(u.getId(), u.getUsername(), u.getEmail(), u.isEmailVerified(),
                 u.getDisplayName(), u.getBio(), r2.publicUrl(u.getAvatarKey()), r2.publicUrl(u.getBannerKey()), u.getCreatedAt(),
-                u.isProtectedAccount(), u.isAdmin());
+                u.isProtectedAccount(), u.isAdmin(), u.getDmPolicy());
     }
 
     /** The name shown for a deactivated account, everywhere it would otherwise appear. */
@@ -48,13 +48,13 @@ public class UserMapper {
 
     /** What anyone sees when they open the profile of a deactivated account. */
     public ProfileResponse toUnavailableProfile(Long id) {
-        return new ProfileResponse(id, "", UNAVAILABLE_NAME, null, null, null, null, 0, 0, false, false, false, false, false, true);
+        return new ProfileResponse(id, "", UNAVAILABLE_NAME, null, null, null, null, 0, 0, false, false, false, false, false, true, false);
     }
 
     public ProfileResponse toProfile(User u, long followers, long following, boolean followedByMe,
-            boolean blockedByMe, boolean mutedByMe, boolean followRequestedByMe) {
+            boolean blockedByMe, boolean mutedByMe, boolean followRequestedByMe, boolean canMessage) {
         return new ProfileResponse(u.getId(), u.getUsername(), u.getDisplayName(), u.getBio(),
                 r2.publicUrl(u.getAvatarKey()), r2.publicUrl(u.getBannerKey()), u.getCreatedAt(),
-                followers, following, followedByMe, blockedByMe, mutedByMe, u.isProtectedAccount(), followRequestedByMe, false);
+                followers, following, followedByMe, blockedByMe, mutedByMe, u.isProtectedAccount(), followRequestedByMe, false, canMessage);
     }
 }

@@ -6,6 +6,20 @@ export const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'im
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 export const MAX_IMAGES_PER_POST = 4
 export const MAX_IMAGES_PER_MESSAGE = 4
+export const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/webm']
+export const MAX_VIDEO_BYTES = 50 * 1024 * 1024
+
+/** The address of a video, as the backend builds it from the validated type (see MediaService). */
+export const isVideoUrl = (url: string) => /\.(mp4|webm)$/i.test(url)
+export const isVideoFile = (file: Pick<File, 'type'>) => ALLOWED_VIDEO_TYPES.includes(file.type)
+
+/** Returns a message when the video cannot be uploaded, otherwise null. */
+export function validateVideo(file: Pick<File, 'type' | 'size' | 'name'>): string | null {
+  if (!isVideoFile(file)) return `${file.name}: use an MP4 or WebM video.`
+  if (file.size > MAX_VIDEO_BYTES) return `${file.name}: videos can be at most ${MAX_VIDEO_BYTES / 1024 / 1024} MB.`
+  if (file.size === 0) return `${file.name} is empty.`
+  return null
+}
 
 /** Returns a message when the file cannot be uploaded, otherwise null. */
 export function validateImage(file: Pick<File, 'type' | 'size' | 'name'>): string | null {
@@ -18,7 +32,7 @@ export function validateImage(file: Pick<File, 'type' | 'size' | 'name'>): strin
 // A browser sets these itself and refuses to let a script set them.
 const FORBIDDEN_HEADERS = new Set(['host', 'content-length', 'connection', 'user-agent', 'accept-encoding'])
 
-function put(url: string, file: File, headers: Record<string, string[]>, onProgress: (fraction: number) => void, signal?: AbortSignal) {
+function put(noun: string, url: string, file: File, headers: Record<string, string[]>, onProgress: (fraction: number) => void, signal?: AbortSignal) {
   return new Promise<void>((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     xhr.open('PUT', url)
@@ -26,8 +40,8 @@ function put(url: string, file: File, headers: Record<string, string[]>, onProgr
       if (!FORBIDDEN_HEADERS.has(name.toLowerCase())) xhr.setRequestHeader(name, values.join(','))
     }
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total)
-    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new ApiError(xhr.status, 'The image could not be uploaded. Please try again.')))
-    xhr.onerror = () => reject(new ApiError(0, 'The image could not be uploaded. Check your connection and try again.'))
+    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new ApiError(xhr.status, `The ${noun} could not be uploaded. Please try again.`)))
+    xhr.onerror = () => reject(new ApiError(0, `The ${noun} could not be uploaded. Check your connection and try again.`))
     xhr.onabort = () => reject(new DOMException('Upload cancelled', 'AbortError'))
     signal?.addEventListener('abort', () => xhr.abort())
     xhr.send(file)
@@ -49,10 +63,10 @@ export async function uploadImage(file: File, onProgress: (fraction: number) => 
   try {
     target = await api.post<UploadUrlResponse>('/api/media/upload-url', { contentType: file.type, contentLength: file.size }, { signal })
   } catch (e) {
-    if (e instanceof ApiError && e.status === 503) throw new ApiError(503, 'Image uploads are not set up on this server yet.')
+    if (e instanceof ApiError && e.status === 503) throw new ApiError(503, `${isVideoFile(file) ? 'Video' : 'Image'} uploads are not set up on this server yet.`)
     throw e
   }
-  await put(target.uploadUrl, file, target.headers, onProgress, signal)
+  await put(isVideoFile(file) ? 'video' : 'image', target.uploadUrl, file, target.headers, onProgress, signal)
   onProgress(1)
   return { key: target.key, publicUrl: target.publicUrl }
 }

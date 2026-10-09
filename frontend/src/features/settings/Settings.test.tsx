@@ -199,6 +199,27 @@ describe('privacy', () => {
     expect(state.calls[0].body).toEqual({ protectedAccount: true })
   })
 
+  it('saves who can message you, and puts the choice back when saving fails', async () => {
+    const { state, record } = open()
+    server.use(http.patch(`${BASE}/api/users/me`, async ({ request }) => {
+      await record(request)
+      return HttpResponse.json({ ...me, dmPolicy: 'FOLLOWED' })
+    }))
+    const select = await screen.findByRole('combobox', { name: 'Who can message me' })
+    expect(select).toHaveValue('EVERYONE')
+
+    await userEvent.selectOptions(select, 'FOLLOWED')
+
+    expect(await screen.findByText('Message settings saved.')).toBeInTheDocument()
+    expect(select).toHaveValue('FOLLOWED')
+    expect(state.calls[0].body).toEqual({ dmPolicy: 'FOLLOWED' })
+
+    server.use(http.patch(`${BASE}/api/users/me`, () => problem(500, 'Database is down')))
+    await userEvent.selectOptions(select, 'NOBODY')
+    expect(await screen.findByText('Database is down')).toBeInTheDocument()
+    expect(select).toHaveValue('FOLLOWED')
+  })
+
   it('flips back and shows the reason when saving fails', async () => {
     open()
     server.use(http.patch(`${BASE}/api/users/me`, () => problem(500, 'Database is down')))
@@ -206,6 +227,64 @@ describe('privacy', () => {
     await userEvent.click(toggle)
     expect(await screen.findByText('Database is down')).toBeInTheDocument()
     expect(toggle).toHaveAttribute('aria-checked', 'false')
+  })
+})
+
+describe('muted words', () => {
+  function serveWords(initial: Array<{ id: number; word: string }> = []) {
+    const state = { words: [...initial], posted: [] as unknown[], deleted: [] as string[] }
+    server.use(
+      http.get(`${BASE}/api/muted-words`, () => HttpResponse.json(state.words.map((w) => ({ ...w, createdAt: '2026-01-01T00:00:00Z' })))),
+      http.post(`${BASE}/api/muted-words`, async ({ request }) => {
+        const body = (await request.json()) as { word: string }
+        state.posted.push(body)
+        const added = { id: 100 + state.words.length, word: body.word.toLowerCase() }
+        state.words = [added, ...state.words]
+        return HttpResponse.json({ ...added, createdAt: '2026-01-01T00:00:00Z' }, { status: 201 })
+      }),
+      http.delete(`${BASE}/api/muted-words/:id`, ({ params }) => {
+        state.deleted.push(String(params.id))
+        state.words = state.words.filter((w) => String(w.id) !== params.id)
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+    return state
+  }
+
+  it('lists the words, adds one, and removes one', async () => {
+    const state = serveWords([{ id: 1, word: 'spoiler' }])
+    open()
+    const section = await screen.findByRole('region', { name: 'Muted words' })
+    expect(await within(section).findByText('spoiler')).toBeInTheDocument()
+
+    await userEvent.type(within(section).getByLabelText('Word or phrase'), 'Pine Apple')
+    await userEvent.click(within(section).getByRole('button', { name: 'Mute' }))
+    expect(await within(section).findByText('pine apple')).toBeInTheDocument()
+    expect(state.posted).toEqual([{ word: 'Pine Apple' }])
+    expect(within(section).getByLabelText('Word or phrase')).toHaveValue('')
+
+    await userEvent.click(within(section).getByRole('button', { name: 'Unmute spoiler' }))
+    await waitFor(() => expect(within(section).queryByText('spoiler')).not.toBeInTheDocument())
+    expect(state.deleted).toEqual(['1'])
+  })
+
+  it('says when there are none, and will not add an empty word', async () => {
+    const state = serveWords()
+    open()
+    const section = await screen.findByRole('region', { name: 'Muted words' })
+    expect(await within(section).findByText('You have not muted any words.')).toBeInTheDocument()
+    expect(within(section).getByRole('button', { name: 'Mute' })).toBeDisabled()
+    expect(state.posted).toEqual([])
+  })
+
+  it('shows the server reason when a word is refused', async () => {
+    serveWords()
+    server.use(http.post(`${BASE}/api/muted-words`, () => problem(400, 'You can mute at most 200 words')))
+    open()
+    const section = await screen.findByRole('region', { name: 'Muted words' })
+    await userEvent.type(within(section).getByLabelText('Word or phrase'), 'one more')
+    await userEvent.click(within(section).getByRole('button', { name: 'Mute' }))
+    expect(await screen.findByText('You can mute at most 200 words')).toBeInTheDocument()
   })
 })
 

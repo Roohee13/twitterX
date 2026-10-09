@@ -31,11 +31,12 @@ public class JwtService {
         this.props = props;
     }
 
-    public String createAccessToken(Long userId, String username) {
+    public String createAccessToken(Long userId, String username, int tokenVersion) {
         Instant now = Instant.now();
         return Jwts.builder()
                 .subject(String.valueOf(userId))
                 .claim("username", username)
+                .claim("tv", tokenVersion)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plus(props.accessTtl())))
                 .signWith(key)
@@ -49,8 +50,10 @@ public class JwtService {
     public Optional<AuthUser> parse(String token) {
         try {
             Claims claims = Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload();
-            return Optional.of(new AuthUser(Long.valueOf(claims.getSubject()), claims.get("username", String.class)));
-        } catch (JwtException | IllegalArgumentException e) {
+            Integer version = claims.get("tv", Integer.class); // tokens issued before versions existed count as 0
+            return Optional.of(new AuthUser(Long.valueOf(claims.getSubject()), claims.get("username", String.class),
+                    version == null ? 0 : version));
+        } catch (JwtException | IllegalArgumentException | ClassCastException e) {
             return Optional.empty();
         }
     }
