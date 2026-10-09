@@ -16,7 +16,7 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
     /** The newest message this person can see (newer than the one they deleted the conversation up to). */
     java.util.Optional<Message> findFirstByConversationIdAndIdGreaterThanOrderByIdDesc(Long conversationId, Long clearedBefore);
 
-    @Query("select m from Message m join fetch m.sender join fetch m.conversation c join fetch c.userOne join fetch c.userTwo where m.id = :id and c.id = :conversationId")
+    @Query("select m from Message m join fetch m.sender join fetch m.conversation c left join fetch c.userOne left join fetch c.userTwo where m.id = :id and c.id = :conversationId")
     java.util.Optional<Message> findInConversation(Long id, Long conversationId);
 
     /** Newest first; callers reverse the page for display. Messages up to {@code clearedBefore} were deleted by the viewer and are not returned. */
@@ -49,7 +49,23 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
             """)
     long countUnreadTotal(Long userId);
 
-    /** Never touches the user's own messages. */
+    /** Group conversations: messages from others after {@code after} (the member's read marker or deletion marker, whichever is later). */
+    @Query("""
+            select count(m) from Message m
+            where m.conversation.id = :conversationId and m.sender.id <> :userId and m.deleted = false and m.id > :after
+            """)
+    long countUnreadAfter(Long conversationId, Long userId, long after);
+
+    /** Unread messages across all the groups the user belongs to. */
+    @Query("""
+            select count(m) from Message m, ConversationMember cm
+            where cm.conversation.id = m.conversation.id and cm.user.id = :userId
+              and m.sender.id <> :userId and m.deleted = false
+              and m.id > (case when cm.clearedBefore > cm.lastReadMessageId then cm.clearedBefore else cm.lastReadMessageId end)
+            """)
+    long countUnreadTotalInGroups(Long userId);
+
+    /** Never touches the user's own messages. Direct conversations only: a group keeps a read marker per member instead. */
     @Modifying
     @Query("""
             update Message m set m.readAt = :now

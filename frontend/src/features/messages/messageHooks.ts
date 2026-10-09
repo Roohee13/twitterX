@@ -3,10 +3,16 @@ import { useCallback } from 'react'
 import { useMatch, useNavigate } from 'react-router'
 import { useToast } from '../../components/ui/Toast'
 import { ApiError, api } from '../../lib/api'
-import type { ConversationResponse, MessageResponse } from '../../lib/types'
+import type { ConversationResponse, ConversationUpdate, MessageResponse } from '../../lib/types'
 import { useCurrentUser } from '../auth/AuthContext'
 import { useLiveConnect, useLiveSubscription } from '../notifications/liveSocketContext'
-import { MESSAGES_KEY, UNREAD_MESSAGES_KEY, addMessage, markConversationReadLocally, replaceMessage } from './messageCache'
+import { MESSAGES_KEY, UNREAD_MESSAGES_KEY, addMessage, applyConversationUpdate, markConversationReadLocally, replaceMessage } from './messageCache'
+
+/** The same limits as the server: a group has at most this many people (the owner included) and its name this many characters. */
+export const MAX_GROUP_MEMBERS = 50
+export const MAX_GROUP_TITLE = 100
+
+export const membersKey = (conversationId: number) => ['messages', 'members', conversationId]
 
 /** How many messages are waiting across all conversations; what the badge in the navigation shows. */
 export function useUnreadMessages() {
@@ -47,6 +53,17 @@ export function useLiveMessages() {
   // The other person edited or deleted one of their messages: replace it, do not add another.
   const onUpdate = useCallback((body: unknown) => void replaceMessage(queryClient, body as MessageResponse), [queryClient])
   useLiveSubscription('/user/queue/message-updates', onUpdate)
+  // A group you are in was renamed or had its members changed, or you are out of it: if it is the open chat, leave it when you are out.
+  const navigate = useNavigate()
+  const onConversationUpdate = useCallback(
+    (body: unknown) => {
+      const update = body as ConversationUpdate
+      if (update.removed && openId === update.conversationId) navigate('/messages', { replace: true })
+      void applyConversationUpdate(queryClient, update)
+    },
+    [queryClient, openId, navigate],
+  )
+  useLiveSubscription('/user/queue/conversation-updates', onConversationUpdate)
   // Messages that arrived before the connection was up (or while it was down) were never pushed, so read the real state.
   const catchUp = useCallback(() => void queryClient.invalidateQueries({ queryKey: MESSAGES_KEY }), [queryClient])
   useLiveConnect(catchUp)
@@ -70,5 +87,24 @@ export function useStartConversation() {
       }
     },
     [navigate, toast, me.username],
+  )
+}
+
+/** Creates a group with these people (by username) and goes to it. Failures, like a block, are shown as a message. */
+export function useCreateGroup() {
+  const navigate = useNavigate()
+  const toast = useToast()
+  return useCallback(
+    async (title: string, usernames: string[]): Promise<boolean> => {
+      try {
+        const group = await api.post<ConversationResponse>('/api/conversations/groups', { title, usernames })
+        navigate(`/messages/${group.id}`)
+        return true
+      } catch (e) {
+        toast(e instanceof ApiError ? e.message : 'Could not create the group.', 'error')
+        return false
+      }
+    },
+    [navigate, toast],
   )
 }

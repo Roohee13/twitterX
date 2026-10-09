@@ -67,8 +67,11 @@ function MessageEditor({ message, onDone }: { message: MessageResponse; onDone: 
 }
 
 /** One message in the chat. Your own messages have a menu to edit or delete them; a deleted one shows a placeholder. */
-/** `readOnly`: the other person's account is unavailable, so nothing in this conversation can be changed any more. */
-export function MessageItem({ message, mine, readOnly = false }: { message: MessageResponse; mine: boolean; readOnly?: boolean }) {
+/**
+ * `readOnly`: the other person's account is unavailable, so nothing in this conversation can be changed any more.
+ * `showSender`: a group, where the name of whoever else wrote it is shown above their message.
+ */
+export function MessageItem({ message, mine, readOnly = false, showSender = false }: { message: MessageResponse; mine: boolean; readOnly?: boolean; showSender?: boolean }) {
   const queryClient = useQueryClient()
   const toast = useToast()
   const [editing, setEditing] = useState(false)
@@ -90,6 +93,7 @@ export function MessageItem({ message, mine, readOnly = false }: { message: Mess
   const canChange = mine && !message.deleted && !readOnly
   return (
     <>
+      {showSender && !mine && <p className="mt-1 px-1 text-xs font-semibold text-zinc-400">{message.sender.displayName}</p>}
       <MessageBubble
         content={message.content}
         mediaUrls={message.mediaUrls}
@@ -112,7 +116,7 @@ export function MessageItem({ message, mine, readOnly = false }: { message: Mess
       />
       {confirming && (
         <ConfirmDialog title="Delete this message?" confirmLabel="Delete" danger onConfirm={remove} onClose={() => setConfirming(false)}>
-          It is deleted for both of you and cannot be brought back. A note that a message was deleted stays in the conversation.
+          It is deleted for {showSender ? 'everyone in the group' : 'both of you'} and cannot be brought back. A note that a message was deleted stays in the conversation.
         </ConfirmDialog>
       )}
     </>

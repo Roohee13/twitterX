@@ -4,6 +4,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
+import com.project.Xclone_backend.conversation.ConversationUpdatedEvent;
 import com.project.Xclone_backend.message.MessageChangedEvent;
 import com.project.Xclone_backend.message.MessageSentEvent;
 
@@ -13,6 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 /**
  * Pushes a saved message to the recipient's /user/queue/messages once it is committed, whether it was sent over REST
  * or WebSocket. A recipient with no open session simply misses the push; the message stays available over REST.
+ * A group message is one event per member, so it takes the same path.
  */
 @Component
 @RequiredArgsConstructor
@@ -37,6 +39,16 @@ public class MessageDeliveryListener {
             push.send(event.recipientId(), "/queue/message-updates", event.message());
         } catch (RuntimeException e) {
             log.warn("Could not push the change of message {} to user {}", event.message().id(), event.recipientId(), e);
+        }
+    }
+
+    /** A group the person belongs to changed (created, renamed, members changed), or they are out of it: /user/queue/conversation-updates. */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onConversationUpdated(ConversationUpdatedEvent event) {
+        try {
+            push.send(event.recipientId(), "/queue/conversation-updates", event.update());
+        } catch (RuntimeException e) {
+            log.warn("Could not push the update of conversation {} to user {}", event.update().conversationId(), event.recipientId(), e);
         }
     }
 }
